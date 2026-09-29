@@ -3,6 +3,9 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* (Opsional) Anda juga bisa mendefinisikan variabelnya di sini */
+  --primary: #15406A;
+  --primary-hover: #0f2f4e;
 }
 
 @theme inline {
@@ -10,6 +13,10 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Menambahkan warna kustom Tailwind v4 */
+  --color-primary: #15406A;
+  --color-primary-hover: #0f2f4e;
 }
 
 @media (prefers-color-scheme: dark) {
