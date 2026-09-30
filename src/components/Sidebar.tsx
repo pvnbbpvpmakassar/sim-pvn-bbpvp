@@ -11,7 +11,8 @@ import {
   ChevronDown, 
   LogOut, 
   Hexagon,
-  X 
+  X,
+  Wallet // Icon baru untuk menu Anggaran
 } from 'lucide-react';
 import { logout } from '../app/actions/auth';
 
@@ -53,6 +54,14 @@ const menuItems = [
       href: `/admin/non-abt/${sub.slug}`,
     })),
   },
+  {
+    name: 'Anggaran',
+    icon: Wallet,
+    submenus: [
+      { name: 'Alokasi Anggaran', href: '/admin/anggaran/alokasi' },
+      { name: 'Rincian Anggaran', href: '/admin/anggaran/rincian' },
+    ],
+  },
 ];
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
@@ -61,6 +70,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   // Otomatis buka accordion jika halaman yang sedang aktif berada di dalam menu terkait
   const [openMenu, setOpenMenu] = useState<string | null>(() => {
+    if (pathname.includes('/admin/anggaran')) return 'Anggaran';
     if (pathname.includes('/admin/abt')) return 'ABT';
     if (pathname.includes('/admin/non-abt')) return 'NON ABT';
     return null;
@@ -98,7 +108,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         }`}
       >
         {/* Header / Logo */}
-        <div className="flex items-center justify-between px-6 h-20 border-b border-white/10">
+        <div className="flex items-center justify-between px-6 h-20 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-xl backdrop-blur-sm border border-white/20">
               <Hexagon className="w-6 h-6 text-blue-300" fill="currentColor" />
@@ -158,7 +168,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                         >
                           <div className="absolute left-6 top-1 bottom-3 w-px bg-white/15" />
                           <div className="space-y-0.5">
-                            {menu.submenus.map((sub) => {
+                            {menu.submenus!.map((sub) => {
                               const isSubActive = pathname === sub.href;
                               return (
                                 <Link
@@ -205,7 +215,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {/* Profil Singkat & Logout */}
-        <div className="p-4 border-t border-white/10 bg-black/15">
+        <div className="p-4 border-t border-white/10 bg-black/15 shrink-0">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-400 to-blue-200 flex items-center justify-center text-[#15406A] font-bold text-sm shadow">
               A

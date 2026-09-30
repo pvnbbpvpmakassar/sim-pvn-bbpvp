@@ -59,7 +59,8 @@ export async function getRincianOutput(kategori: string, modul: string) {
     });
 
     return { success: true, data: formattedData };
-  } catch (error: unknown) { // <-- Diubah menjadi unknown
+  } catch (error: unknown) {
+    // <-- Diubah menjadi unknown
     console.error("Gagal mengambil data:", error);
     if (error instanceof Error) {
       return { success: false, error: error.message };
@@ -83,8 +84,8 @@ export async function simpanBulkRincianOutput(kategori: string, modul: string, r
     for (const row of rows) {
       if (row.isReadOnly) {
         // Jika baris induk ini terkunci, periksa apakah pengguna menambahkan sub-RO manual di dalamnya
-        const manualSubRows = row.subRows ? row.subRows.filter(sub => !sub.isReadOnly) : [];
-        
+        const manualSubRows = row.subRows ? row.subRows.filter((sub) => !sub.isReadOnly) : [];
+
         if (manualSubRows.length > 0) {
           // Pastikan baris induknya eksis di database agar tidak error Foreign Key
           const existingParent = await sql`SELECT id FROM rincian_output WHERE id = ${row.id}`;
@@ -94,7 +95,7 @@ export async function simpanBulkRincianOutput(kategori: string, modul: string, r
               VALUES (${row.id}, ${kategori}, ${modul}, ${row.kode}, ${row.ro}, ${row.paket}, ${row.realisasi}, TRUE)
             `;
           }
-          
+
           // Masukkan sub-RO manual yang ditambahkan pengguna
           for (const sub of manualSubRows) {
             await sql`
@@ -292,5 +293,267 @@ export async function simpanSatpelData(kategori: string, locations: LokasiSatpel
     console.error("Gagal menyimpan data Satpel:", error);
     if (error instanceof Error) return { success: false, error: error.message };
     return { success: false, error: "Terjadi kesalahan saat menyimpan Satpel." };
+  }
+}
+
+// --- Tipe Data Alokasi Anggaran ---
+export type AlokasiRowData = {
+  id: string;
+  nama_modul: string;
+  anggaran: number;
+  realisasi: number;
+};
+
+// --- Fungsi Read (Menarik Data Alokasi Anggaran) ---
+export async function getAlokasiAnggaran() {
+  try {
+    const data = await sql`
+      SELECT * FROM alokasi_anggaran 
+      ORDER BY created_at ASC
+    `;
+
+    // Pisahkan berdasarkan kategori dan pastikan tipe data angka di-parsing dengan benar dari BIGINT
+    const abt = data
+      .filter((d) => d.kategori === "ABT")
+      .map((d) => ({
+        id: d.id,
+        nama_modul: d.nama_modul,
+        anggaran: Number(d.anggaran),
+        realisasi: Number(d.realisasi),
+      }));
+
+    const nonAbt = data
+      .filter((d) => d.kategori === "NON-ABT")
+      .map((d) => ({
+        id: d.id,
+        nama_modul: d.nama_modul,
+        anggaran: Number(d.anggaran),
+        realisasi: Number(d.realisasi),
+      }));
+
+    return { success: true, data: { abt, nonAbt } };
+  } catch (error: unknown) {
+    console.error("Gagal mengambil data Alokasi Anggaran:", error);
+    if (error instanceof Error) return { success: false, error: error.message };
+    return { success: false, error: "Gagal mengambil data dari database" };
+  }
+}
+
+// --- Fungsi Upsert (Menyimpan Data Alokasi Anggaran) ---
+export async function simpanBulkAlokasiAnggaran(abtRows: AlokasiRowData[], nonAbtRows: AlokasiRowData[]) {
+  try {
+    // Pendekatan sinkronisasi penuh: Hapus semua data lama dan masukkan yang baru
+    await sql`DELETE FROM alokasi_anggaran`;
+
+    // 1. Simpan baris ABT
+    for (const row of abtRows) {
+      await sql`
+        INSERT INTO alokasi_anggaran (id, kategori, nama_modul, anggaran, realisasi)
+        VALUES (${row.id}, 'ABT', ${row.nama_modul}, ${row.anggaran}, ${row.realisasi})
+      `;
+    }
+
+    // 2. Simpan baris NON-ABT
+    for (const row of nonAbtRows) {
+      await sql`
+        INSERT INTO alokasi_anggaran (id, kategori, nama_modul, anggaran, realisasi)
+        VALUES (${row.id}, 'NON-ABT', ${row.nama_modul}, ${row.anggaran}, ${row.realisasi})
+      `;
+    }
+
+    return { success: true };
+  } catch (error: unknown) {
+    console.error("Gagal menyimpan data Alokasi Anggaran:", error);
+    if (error instanceof Error) return { success: false, error: error.message };
+    return { success: false, error: "Terjadi kesalahan saat menyimpan Alokasi Anggaran." };
+  }
+}
+
+// --- Tipe Data Rincian Anggaran ---
+export type AnggaranSubRowData = {
+  id: string;
+  kode: string;
+  ro: string;
+  anggaran: number;
+  realisasi: number;
+  fallbackInsert?: { kategori: string; modul: string; kode: string; ro: string; parent_id: string | null };
+};
+
+export type AnggaranRowData = {
+  id: string;
+  kode: string;
+  ro: string;
+  anggaran: number;
+  realisasi: number;
+  subRows: AnggaranSubRowData[];
+  fallbackInsert?: { kategori: string; modul: string; kode: string; ro: string; parent_id: string | null };
+};
+
+export type ModulAnggaranGroup = {
+  modul: string;
+  alokasi: number;
+  rows: AnggaranRowData[];
+};
+
+// --- Fungsi Read (Menarik & Mengelompokkan Data dengan Struktur Baru) ---
+export async function getRincianAnggaran() {
+  try {
+    const roData = await sql`SELECT * FROM rincian_output ORDER BY modul, created_at ASC`;
+    const alokasiData = await sql`SELECT * FROM alokasi_anggaran`;
+
+    const formatData = (kategori: string): ModulAnggaranGroup[] => {
+      const filtered = roData.filter((r) => r.kategori === kategori);
+      const alokasiKategori = alokasiData.filter((a) => a.kategori === kategori);
+
+      // Grup UPTP menelan modul-modul ini
+      const uptpGroupModules = ["uptp", "tmt", "lpks", "blkk", "satpel", "uptd"];
+      const independentModules = Array.from(new Set(filtered.map((r) => r.modul))).filter((m) => !uptpGroupModules.includes(m));
+
+      const result: ModulAnggaranGroup[] = [];
+
+      // Fungsi bantuan menyusun baris normal
+      const buildRowsForModule = (modulName: string, prefix: string = ""): AnggaranRowData[] => {
+        const modData = filtered.filter((r) => r.modul === modulName);
+        const parents = modData.filter((r) => r.parent_id === null);
+        const children = modData.filter((r) => r.parent_id !== null);
+
+        return parents.map((p) => {
+          const subs = children
+            .filter((c) => c.parent_id === p.id)
+            .map((c) => ({
+              id: c.id,
+              kode: c.kode || "-",
+              ro: c.nama_ro,
+              anggaran: Number(c.anggaran || 0),
+              realisasi: Number(c.realisasi_anggaran || 0),
+            }));
+          return {
+            id: p.id,
+            kode: p.kode || "-",
+            ro: prefix ? `${prefix} ${p.nama_ro}` : p.nama_ro,
+            anggaran: Number(p.anggaran || 0),
+            realisasi: Number(p.realisasi_anggaran || 0),
+            subRows: subs,
+          };
+        });
+      };
+
+      // 1. Masukkan Modul Independen (Sertifikasi, Produktivitas, dll)
+      independentModules.forEach((modul) => {
+        const alokasiMatch = alokasiKategori.find((a) => a.nama_modul.toLowerCase().includes(modul.toLowerCase()));
+        result.push({ modul, alokasi: alokasiMatch ? Number(alokasiMatch.anggaran) : 0, rows: buildRowsForModule(modul) });
+      });
+
+      // 2. Masukkan Mega Grup UPTP (Menggabungkan UPTP, UPTD, Satpel, TMT, BLKK, LPKS)
+      const hasUptpData = filtered.some((r) => uptpGroupModules.includes(r.modul));
+      const uptpAlokasiMatch = alokasiKategori.find((a) => a.nama_modul.toLowerCase().includes("uptp"));
+
+      if (hasUptpData || uptpAlokasiMatch) {
+        const PARENT_UUID = kategori === "ABT" ? "11111111-1111-1111-1111-111111111111" : "22222222-2222-2222-2222-222222222222";
+        const tmtId = kategori === "ABT" ? "11111111-1111-1111-1111-111111111112" : "22222222-2222-2222-2222-222222222223";
+        const lpksId = kategori === "ABT" ? "11111111-1111-1111-1111-111111111113" : "22222222-2222-2222-2222-222222222224";
+        const blkkId = kategori === "ABT" ? "11111111-1111-1111-1111-111111111114" : "22222222-2222-2222-2222-222222222225";
+
+        const getDummyRow = (dummyId: string, roName: string, modulName: string) => {
+          const dbRow = filtered.find((r) => r.id === dummyId);
+          return {
+            id: dummyId,
+            kode: dbRow?.kode || "-",
+            ro: roName,
+            anggaran: Number(dbRow?.anggaran || 0),
+            realisasi: Number(dbRow?.realisasi_anggaran || 0),
+            fallbackInsert: { kategori, modul: modulName, kode: "-", ro: roName, parent_id: PARENT_UUID },
+          };
+        };
+
+        const uptpChildren = filtered.filter((r) => r.modul === "uptp" && r.parent_id !== null);
+        const manualSubs = uptpChildren
+          .filter((c) => c.parent_id === PARENT_UUID && c.is_read_only === false)
+          .map((c) => ({
+            id: c.id,
+            kode: c.kode || "-",
+            ro: c.nama_ro,
+            anggaran: Number(c.anggaran || 0),
+            realisasi: Number(c.realisasi_anggaran || 0),
+          }));
+
+        const parentDbRow = filtered.find((r) => r.id === PARENT_UUID);
+        const integratedRow: AnggaranRowData = {
+          id: PARENT_UUID,
+          kode: parentDbRow?.kode || "4057.SCO.003",
+          ro: "Bidang Industri dan Jasa",
+          anggaran: Number(parentDbRow?.anggaran || 0),
+          realisasi: Number(parentDbRow?.realisasi_anggaran || 0),
+          fallbackInsert: { kategori, modul: "uptp", kode: "4057.SCO.003", ro: "Bidang Industri dan Jasa", parent_id: null },
+          subRows: [getDummyRow(tmtId, "TMT", "tmt"), getDummyRow(blkkId, "BLKK", "blkk"), getDummyRow(lpksId, "LPKS", "lpks"), ...manualSubs],
+        };
+
+        const otherUptpParents = filtered.filter((r) => r.modul === "uptp" && r.parent_id === null && r.id !== PARENT_UUID);
+        const otherUptpRows: AnggaranRowData[] = otherUptpParents.map((p) => ({
+          id: p.id,
+          kode: p.kode || "-",
+          ro: p.nama_ro,
+          anggaran: Number(p.anggaran || 0),
+          realisasi: Number(p.realisasi_anggaran || 0),
+          subRows: uptpChildren
+            .filter((c) => c.parent_id === p.id)
+            .map((c) => ({
+              id: c.id,
+              kode: c.kode || "-",
+              ro: c.nama_ro,
+              anggaran: Number(c.anggaran || 0),
+              realisasi: Number(c.realisasi_anggaran || 0),
+            })),
+        }));
+
+        const satpelRows = buildRowsForModule("satpel", "[SATPEL]");
+        const uptdRows = buildRowsForModule("uptd", "[UPTD]");
+
+        result.push({
+          modul: "UPTP",
+          alokasi: uptpAlokasiMatch ? Number(uptpAlokasiMatch.anggaran) : 0,
+          rows: [integratedRow, ...otherUptpRows, ...satpelRows, ...uptdRows],
+        });
+      }
+
+      return result;
+    };
+
+    return { success: true, data: { abt: formatData("ABT"), nonAbt: formatData("NON-ABT") } };
+  } catch (error: unknown) {
+    if (error instanceof Error) return { success: false, error: error.message };
+    return { success: false, error: "Gagal mengambil data dari database" };
+  }
+}
+
+// --- Fungsi Upsert (Penyimpanan Massal Nilai Anggaran Saja) ---
+// --- Fungsi Upsert (Penyimpanan Massal Nilai Anggaran Saja) ---
+export async function simpanBulkRincianAnggaran(payload: { 
+  id: string; 
+  anggaran: number; 
+  realisasi: number; 
+  fallbackInsert?: { kategori: string; modul: string; kode: string; ro: string; parent_id: string | null }; 
+}[]) {
+  try {
+    for (const item of payload) {
+      // Lakukan Update
+      const res = await sql`
+        UPDATE rincian_output 
+        SET anggaran = ${item.anggaran}, realisasi_anggaran = ${item.realisasi}
+        WHERE id = ${item.id}
+        RETURNING id
+      `;
+      // Jika baris belum ada di database (contoh: TMT belum pernah disimpan di Modul UPTP), paksa Insert
+      if (res.length === 0 && item.fallbackInsert) {
+        await sql`
+          INSERT INTO rincian_output (id, kategori, modul, parent_id, kode, nama_ro, anggaran, realisasi_anggaran, is_read_only)
+          VALUES (${item.id}, ${item.fallbackInsert.kategori}, ${item.fallbackInsert.modul}, ${item.fallbackInsert.parent_id}, ${item.fallbackInsert.kode}, ${item.fallbackInsert.ro}, ${item.anggaran}, ${item.realisasi}, TRUE)
+        `;
+      }
+    }
+    return { success: true };
+  } catch (error: unknown) {
+    if (error instanceof Error) return { success: false, error: error.message };
+    return { success: false, error: "Terjadi kesalahan saat menyimpan Rincian Anggaran." };
   }
 }
