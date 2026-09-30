@@ -233,9 +233,18 @@ export default function SertifikasiKompetensiPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="w-8 h-8 border-4 border-[#15406A] border-t-transparent rounded-full animate-spin"></div>
-        <span className="ml-3 font-semibold text-[#15406A]">Memuat data dari database...</span>
+      <div className="flex min-h-screen flex-col items-center justify-center">
+        <div className="mb-6 flex items-end gap-1.5 h-12">
+          <div className="w-2 rounded-full bg-[#15406A] animate-[loadingBar_1s_ease-in-out_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/80 animate-[loadingBar_1s_ease-in-out_0.15s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/60 animate-[loadingBar_1s_ease-in-out_0.3s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
+        </div>
+
+        <p className="text-sm font-semibold text-[#15406A]">Memuat data Sertifikasi Kompetensi</p>
+
+        <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
   }

@@ -104,8 +104,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Hexagon className="w-6 h-6 text-blue-300" fill="currentColor" />
             </div>
             <div>
-              <h1 className="text-lg font-black tracking-wide leading-tight">PROTOTYPE</h1>
-              <span className="text-[10px] text-blue-300 font-semibold tracking-widest uppercase">Admin Panel</span>
+              <h1 className="text-lg font-black tracking-wide leading-tight">SIM-PVN</h1>
+              <span className="text-[10px] text-blue-300 font-semibold tracking-widest uppercase">BBPVP MAKASSAR</span>
             </div>
           </div>
 
@@ -212,7 +212,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
             <div className="overflow-hidden">
               <p className="text-xs font-bold text-white truncate">Administrator</p>
-              <p className="text-[10px] text-blue-300 truncate">admin@domain.com</p>
+              <p className="text-[10px] text-blue-300 truncate">admin@bbpvp.id</p>
             </div>
           </div>
           <button
@@ -220,7 +220,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             className="w-full flex items-center justify-center gap-2 bg-red-500/20 hover:bg-red-500 text-red-200 hover:text-white py-2 rounded-lg text-xs font-semibold transition-all duration-200"
           >
             <LogOut className="w-3.5 h-3.5" />
-            Keluar Sesi
+            Keluar
           </button>
         </div>
       </aside>

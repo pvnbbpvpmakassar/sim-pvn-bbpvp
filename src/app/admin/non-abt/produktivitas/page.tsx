@@ -29,7 +29,7 @@ export default function ProduktivitasKompetensiPage() {
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const response = await getRincianOutput("ABT", "produktivitas");
+      const response = await getRincianOutput("NON-ABT", "produktivitas");
       if (response.success && response.data) {
         setRows(response.data as Row[]);
       } else {
@@ -216,7 +216,7 @@ export default function ProduktivitasKompetensiPage() {
   // --- Fungsi Menyimpan Ke Database Murni ---
   const simpanData = async () => {
     setIsSaving(true);
-    const result = await simpanBulkRincianOutput("ABT", "produktivitas", rows);
+    const result = await simpanBulkRincianOutput("NON-ABT", "produktivitas", rows);
 
     if (result.success) {
       setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Produktivitas berhasil disimpan ke Database!" });
@@ -287,7 +287,7 @@ export default function ProduktivitasKompetensiPage() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#15406A]">Produktivitas (ABT)</h1>
+          <h1 className="text-2xl font-bold text-[#15406A]">Produktivitas (NON-ABT)</h1>
           <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi output Produktivitas</p>
         </div>
         <div className="flex items-center gap-3">
@@ -322,7 +322,7 @@ export default function ProduktivitasKompetensiPage() {
                   Rincian Output (RO)
                 </th>
                 <th colSpan={4} className="border border-[#1a4e82] px-4 py-2 text-center">
-                  ABT
+                  NON-ABT
                 </th>
                 <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-32">
                   Aksi

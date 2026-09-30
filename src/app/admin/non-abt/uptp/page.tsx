@@ -12,8 +12,10 @@ type SubRow = { id: string; kode: string; ro: string; paket: number; realisasi: 
 type Row = { id: string; kode: string; ro: string; paket: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
 type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
 
-// Menggunakan UUID Valid agar diterima database
-const PARENT_UUID = "11111111-1111-1111-1111-111111111111";
+// Ganti bagian atas (sebelum fungsi komponen) dengan kode ini:
+
+// Menggunakan UUID Valid yang BERBEDA dari modul ABT
+const PARENT_UUID = "22222222-2222-2222-2222-222222222222";
 
 const initialReadOnlyRows: Row[] = [
   {
@@ -24,9 +26,9 @@ const initialReadOnlyRows: Row[] = [
     realisasi: 0,
     isReadOnly: true,
     subRows: [
-      { id: "11111111-1111-1111-1111-111111111112", kode: "-", ro: "TMT", paket: 0, realisasi: 0, isReadOnly: true },
-      { id: "11111111-1111-1111-1111-111111111113", kode: "-", ro: "LPKS", paket: 0, realisasi: 0, isReadOnly: true },
-      { id: "11111111-1111-1111-1111-111111111114", kode: "-", ro: "BLKK", paket: 0, realisasi: 0, isReadOnly: true },
+      { id: "22222222-2222-2222-2222-222222222223", kode: "-", ro: "TMT", paket: 0, realisasi: 0, isReadOnly: true },
+      { id: "22222222-2222-2222-2222-222222222224", kode: "-", ro: "LPKS", paket: 0, realisasi: 0, isReadOnly: true },
+      { id: "22222222-2222-2222-2222-222222222225", kode: "-", ro: "BLKK", paket: 0, realisasi: 0, isReadOnly: true },
     ],
   },
 ];
@@ -44,8 +46,8 @@ export default function UPTPPage() {
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const resUPTP = await getRincianOutput("ABT", "uptp");
-      const resIntegrasi = await getIntegrasiUPTP("ABT");
+      const resUPTP = await getRincianOutput("NON-ABT", "uptp");
+      const resIntegrasi = await getIntegrasiUPTP("NON-ABT");
 
       if (resUPTP.success && resIntegrasi.success) {
         const manualData = (resUPTP.data as Row[]) || []; // Buat tipe data untuk struktur objek kembalian integrasi
@@ -62,6 +64,7 @@ export default function UPTPPage() {
         };
 
         // Bikin kerangka data integrasi
+        // Di dalam blok `useEffect`
         const integratedRow: Row = {
           id: PARENT_UUID,
           kode: "4057.SCO.003",
@@ -70,9 +73,9 @@ export default function UPTPPage() {
           realisasi: 0,
           isReadOnly: true,
           subRows: [
-            { id: "11111111-1111-1111-1111-111111111112", kode: tmt.kode || "-", ro: "TMT", paket: tmt.paket, realisasi: tmt.realisasi, isReadOnly: true },
-            { id: "11111111-1111-1111-1111-111111111113", kode: lpks.kode || "-", ro: "LPKS", paket: lpks.paket, realisasi: lpks.realisasi, isReadOnly: true },
-            { id: "11111111-1111-1111-1111-111111111114", kode: blkk.kode || "-", ro: "BLKK", paket: blkk.paket, realisasi: blkk.realisasi, isReadOnly: true },
+            { id: "22222222-2222-2222-2222-222222222223", kode: tmt.kode || "-", ro: "TMT", paket: tmt.paket, realisasi: tmt.realisasi, isReadOnly: true },
+            { id: "22222222-2222-2222-2222-222222222224", kode: lpks.kode || "-", ro: "LPKS", paket: lpks.paket, realisasi: lpks.realisasi, isReadOnly: true },
+            { id: "22222222-2222-2222-2222-222222222225", kode: blkk.kode || "-", ro: "BLKK", paket: blkk.paket, realisasi: blkk.realisasi, isReadOnly: true },
           ],
         };
 
@@ -152,7 +155,7 @@ export default function UPTPPage() {
 
   const simpanData = async () => {
     setIsSaving(true);
-    const result = await simpanBulkRincianOutput("ABT", "uptp", rows);
+    const result = await simpanBulkRincianOutput("NON-ABT", "uptp", rows);
     if (result.success) {
       setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data UPTP berhasil disimpan ke Database!" });
     } else {
@@ -290,7 +293,7 @@ export default function UPTPPage() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#15406A]">UPTP (ABT)</h1>
+          <h1 className="text-2xl font-bold text-[#15406A]">UPTP (NON-ABT)</h1>
           <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi output UPTP.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -325,7 +328,7 @@ export default function UPTPPage() {
                   Rincian Output (RO)
                 </th>
                 <th colSpan={4} className="border border-[#1a4e82] px-4 py-2 text-center">
-                  ABT
+                  NON-ABT
                 </th>
                 <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-32">
                   Aksi

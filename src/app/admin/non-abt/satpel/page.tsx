@@ -30,7 +30,7 @@ export default function SatpelPage() {
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const res = await getSatpelData("ABT");
+      const res = await getSatpelData("NON-ABT");
       if (res.success) {
         if (res.locations && res.locations.length > 0) setLocations(res.locations as LocationCol[]);
         if (res.data) setRows(res.data as Row[]);
@@ -110,7 +110,7 @@ export default function SatpelPage() {
 
   const simpanData = async () => {
     setIsSaving(true);
-    const result = await simpanSatpelData("ABT", locations, rows);
+    const result = await simpanSatpelData("NON-ABT", locations, rows);
     if (result.success) {
       setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Satpel berhasil disimpan ke Database!" });
     } else {
@@ -314,7 +314,7 @@ export default function SatpelPage() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#15406A]">Satpel (ABT)</h1>
+          <h1 className="text-2xl font-bold text-[#15406A]">Satpel (NON-ABT)</h1>
           <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi multi-lokasi.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

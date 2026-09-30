@@ -1,149 +1,297 @@
 "use client";
 
-import React, { useState, Fragment } from "react";
-import { motion } from "framer-motion";
-import { Save, Download, Trash2, Plus, PlusCircle, AlertCircle, RefreshCw, CornerDownRight } from "lucide-react";
-import { getRincianOutput } from "@/app/actions/data";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Save, Download, Trash2, Plus, PlusCircle, AlertCircle, RefreshCw, CornerDownRight, X, CheckCircle } from "lucide-react";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 
-// --- Tipe Data ---
-type SubRow = {
-  id: string;
-  kode: string;
-  ro: string;
-  paket: number;
-  realisasi: number;
-};
+// Impor fungsi database
+import { getRincianOutput, simpanBulkRincianOutput } from "@/app/actions/data";
 
-type Row = {
-  id: string;
-  kode: string;
-  ro: string;
-  paket: number;
-  realisasi: number;
-  subRows: SubRow[];
-};
+type SubRow = { id: string; kode: string; ro: string; paket: number; realisasi: number; isReadOnly?: boolean };
+type Row = { id: string; kode: string; ro: string; paket: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
+type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
+type ExcelRow = { NO: number | string; KODE: string; "RINCIAN OUTPUT (RO)": string; "TARGET PAKET": number; "TARGET ORANG": number; REALISASI: number; "PERSEN (%)": string };
 
-export default function UPTDPage() {
+export default function UptdKompetensiPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Gunakan useEffect untuk mengambil data SQL murni saat halaman dirender
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoadingData(true);
-      // Panggil server action dengan parameter kategori dan modul
-      const response = await getRincianOutput("ABT", "uptd");
+  const [modal, setModal] = useState<ModalConfig>({ isOpen: false, type: "confirm", title: "", message: "" });
+  const closeModal = () => setModal((prev) => ({ ...prev, isOpen: false }));
 
-      if (response.success && response.data) {
-        // Timpa state awal dengan data asli dari PostgreSQL
-        setRows(response.data as Row[]);
-      } else {
-        console.error(response.error);
-      }
-      setIsLoadingData(false);
-    };
-
-    fetchData();
-  }, []);
-
-  // --- Fungsi Kalkulasi Otomatis ---
   const hitungOrang = (paket: number) => paket * 16;
   const hitungPersen = (realisasi: number, orang: number) => (orang > 0 ? ((realisasi / orang) * 100).toFixed(2) : "0.00");
 
-  // --- Fungsi Manipulasi Baris ---
-  const tambahBarisUtama = () => {
-    setRows([...rows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0, subRows: [] }]);
-  };
+  // --- Memuat Data dari Database saat Render Pertama ---
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      const response = await getRincianOutput("ABT", "uptd");
+      if (response.success && response.data) {
+        setRows(response.data as Row[]);
+      } else {
+        setModal({ isOpen: true, type: "error", title: "Gagal Memuat", message: "Gagal mengambil data dari database." });
+      }
+      setIsLoading(false);
+    };
+    fetchData();
+  }, []);
 
+  const tambahBarisUtama = () => setRows([...rows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0, subRows: [] }]);
   const tambahSubBaris = (parentId: string) => {
-    setRows(
-      rows.map((row) => {
-        if (row.id === parentId) {
-          return {
-            ...row,
-            // Reset nilai induk karena sekarang bergantung pada sub-baris
-            paket: 0,
-            realisasi: 0,
-            subRows: [...row.subRows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0 }],
-          };
-        }
-        return row;
-      }),
-    );
+    setRows(rows.map((row) => (row.id === parentId ? { ...row, paket: 0, realisasi: 0, subRows: [...row.subRows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0 }] } : row)));
   };
-
-  const hapusBarisUtama = (id: string) => {
-    setRows(rows.filter((row) => row.id !== id));
-  };
-
-  const hapusSubBaris = (parentId: string, subId: string) => {
-    setRows(
-      rows.map((row) => {
-        if (row.id === parentId) {
-          return { ...row, subRows: row.subRows.filter((sub) => sub.id !== subId) };
-        }
-        return row;
-      }),
-    );
-  };
-
+  const hapusBarisUtama = (id: string) =>
+    setModal({
+      isOpen: true,
+      type: "confirm",
+      title: "Hapus RO?",
+      message: "Lanjutkan menghapus rincian ini beserta anak-anaknya?",
+      onConfirm: () => {
+        setRows((prev) => prev.filter((row) => row.id !== id));
+        closeModal();
+      },
+    });
+  const hapusSubBaris = (parentId: string, subId: string) =>
+    setModal({
+      isOpen: true,
+      type: "confirm",
+      title: "Hapus Sub-RO?",
+      message: "Data ini akan dihapus dari tabel.",
+      onConfirm: () => {
+        setRows((prev) => prev.map((row) => (row.id === parentId ? { ...row, subRows: row.subRows.filter((sub) => sub.id !== subId) } : row)));
+        closeModal();
+      },
+    });
   const bersihkanTabel = () => {
-    if (confirm("Apakah Anda yakin ingin menghapus semua data di tabel ini?")) {
-      setRows([]);
+    if (rows.length === 0) return;
+    setModal({
+      isOpen: true,
+      type: "confirm",
+      title: "Bersihkan Tabel?",
+      message: "Semua data akan dihapus dari layar (Tekan simpan untuk memperbarui database).",
+      onConfirm: () => {
+        setRows([]);
+        closeModal();
+      },
+    });
+  };
+  const updateBarisUtama = (id: string, field: keyof Row, value: string | number) => setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+  const updateSubBaris = (parentId: string, subId: string, field: keyof SubRow, value: string | number) =>
+    setRows(rows.map((row) => (row.id === parentId ? { ...row, subRows: row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub)) } : row)));
+
+// --- Fungsi Download Excel Berwarna ---
+  const handleDownloadExcel = async () => {
+    if (rows.length === 0) {
+      setModal({ isOpen: true, type: "error", title: "Gagal", message: "Tabel kosong." });
+      return;
     }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("UPTD");
+
+    // 1. Definisikan Kolom dan Lebarnya
+    worksheet.columns = [
+      { header: "NO.", key: "no", width: 8 },
+      { header: "KODE", key: "kode", width: 15 },
+      { header: "RINCIAN OUTPUT (RO)", key: "ro", width: 45 },
+      { header: "TARGET PAKET", key: "paket", width: 18 },
+      { header: "TARGET ORANG", key: "orang", width: 18 },
+      { header: "REALISASI", key: "realisasi", width: 18 },
+      { header: "PERSEN (%)", key: "persen", width: 15 },
+    ];
+
+    // Fungsi bantuan untuk menerapkan border ke sebuah baris
+    const applyBorder = (row: ExcelJS.Row) => {
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFCCCCCC" } },
+          left: { style: "thin", color: { argb: "FFCCCCCC" } },
+          bottom: { style: "thin", color: { argb: "FFCCCCCC" } },
+          right: { style: "thin", color: { argb: "FFCCCCCC" } },
+        };
+        cell.alignment = { vertical: "middle", horizontal: "center" }; // Default align tengah
+      });
+      // Khusus kolom RO diratakan ke kiri
+      const roCell = row.getCell(3);
+      if (roCell) roCell.alignment = { vertical: "middle", horizontal: "left" };
+    };
+
+    // 2. Styling Header (Warna Primer #15406A)
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF15406A" } };
+      cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFFFFFFF" } },
+        left: { style: "thin", color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+        right: { style: "thin", color: { argb: "FFFFFFFF" } },
+      };
+    });
+
+    // 3. Masukkan Data Induk dan Anak
+    rows.forEach((row, index) => {
+      const hasSub = row.subRows.length > 0;
+      const paket = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket;
+      const realisasi = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi;
+      const orang = hitungOrang(paket);
+      const persen = hitungPersen(realisasi, orang);
+
+      // Tambah baris induk
+      const parentRow = worksheet.addRow({
+        no: index + 1,
+        kode: row.kode,
+        ro: row.ro,
+        paket: paket,
+        orang: orang,
+        realisasi: realisasi,
+        persen: `${persen}%`,
+      });
+      
+      applyBorder(parentRow);
+      if (hasSub) {
+        parentRow.font = { bold: true };
+        parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } }; // bg-gray-50
+      }
+
+      // Tambah baris anak (Sub-RO)
+      row.subRows.forEach((sub) => {
+        const subOrang = hitungOrang(sub.paket);
+        const subPersen = hitungPersen(sub.realisasi, subOrang);
+        const subRow = worksheet.addRow({
+          no: "", // Kosong untuk sub
+          kode: sub.kode,
+          ro: `    ↳ ${sub.ro}`, // Indentasi Sub-RO
+          paket: sub.paket,
+          orang: subOrang,
+          realisasi: sub.realisasi,
+          persen: `${subPersen}%`,
+        });
+        applyBorder(subRow);
+      });
+    });
+
+    // 4. Tambahkan Baris Jumlah Total di Paling Bawah
+    const totalRow = worksheet.addRow({
+      no: "",
+      kode: "",
+      ro: "JUMLAH TOTAL",
+      paket: totalPaket,
+      orang: totalOrang,
+      realisasi: totalRealisasi,
+      persen: `${totalPersen}%`,
+    });
+
+    // Styling Baris Total (Warna Amber / Emas)
+    totalRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } }; // Warna setara bg-amber-500
+      cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFFFFFFF" } },
+        left: { style: "thin", color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+        right: { style: "thin", color: { argb: "FFFFFFFF" } },
+      };
+      
+      if (colNumber === 3) {
+        cell.alignment = { vertical: "middle", horizontal: "right" }; // Teks Jumlah Total ke kanan
+      } else {
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      }
+    });
+
+    // Menggabungkan sel A (NO) sampai C (RO) khusus untuk Baris Total agar rapi
+    worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
+
+    // 5. Ekspor menjadi file Excel
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), "Data_UPTD_Kompetensi.xlsx");
   };
 
-  // --- Fungsi Update Data (Inline Editing) ---
-  const updateBarisUtama = (id: string, field: keyof Row, value: string | number) => {
-    setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
-  };
-
-  const updateSubBaris = (parentId: string, subId: string, field: keyof SubRow, value: string | number) => {
-    setRows(
-      rows.map((row) => {
-        if (row.id === parentId) {
-          const newSubRows = row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub));
-          return { ...row, subRows: newSubRows };
-        }
-        return row;
-      }),
-    );
-  };
-
-  const simpanData = () => {
+  // --- Fungsi Menyimpan Ke Database Murni ---
+  const simpanData = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      alert("Data UPTD berhasil disimpan!");
-    }, 1000);
+    const result = await simpanBulkRincianOutput("ABT", "uptd", rows);
+
+    if (result.success) {
+      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data UPTD berhasil disimpan ke Database!" });
+    } else {
+      setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan saat menyimpan ke database: ${result.error}` });
+    }
+    setIsSaving(false);
   };
 
-  const totalPaket = rows.reduce((sum, row) => {
-    const hasSub = row.subRows.length > 0;
-    const rowPaket = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket || 0;
-    return sum + rowPaket;
-  }, 0);
-
-  const totalRealisasi = rows.reduce((sum, row) => {
-    const hasSub = row.subRows.length > 0;
-    const rowRealisasi = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi || 0;
-    return sum + rowRealisasi;
-  }, 0);
-
+  const totalPaket = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket || 0), 0);
+  const totalRealisasi = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi || 0), 0);
   const totalOrang = hitungOrang(totalPaket);
   const totalPersen = hitungPersen(totalRealisasi, totalOrang);
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center">
+        <div className="mb-6 flex items-end gap-1.5 h-12">
+          <div className="w-2 rounded-full bg-[#15406A] animate-[loadingBar_1s_ease-in-out_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/80 animate-[loadingBar_1s_ease-in-out_0.15s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/60 animate-[loadingBar_1s_ease-in-out_0.3s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
+        </div>
+
+        <p className="text-sm font-semibold text-[#15406A]">Memuat data UPTD</p>
+
+        <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Header & Tombol Aksi Atas */}
+    <div className="space-y-6 relative">
+      <AnimatePresence>
+        {modal.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative">
+              <div className={`p-6 ${modal.type === "error" ? "bg-red-50" : modal.type === "success" ? "bg-emerald-50" : "bg-blue-50"}`}>
+                <div className="flex items-center gap-4">
+                  {modal.type === "confirm" && <AlertCircle className="w-8 h-8 text-blue-600" />}
+                  {modal.type === "error" && <AlertCircle className="w-8 h-8 text-red-600" />}
+                  {modal.type === "success" && <CheckCircle className="w-8 h-8 text-emerald-600" />}
+                  <h3 className={`text-xl font-bold ${modal.type === "error" ? "text-red-900" : modal.type === "success" ? "text-emerald-900" : "text-blue-900"}`}>{modal.title}</h3>
+                </div>
+                <p className="mt-3 text-gray-700 leading-relaxed">{modal.message}</p>
+              </div>
+              <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
+                {modal.type === "confirm" ? (
+                  <>
+                    <button onClick={closeModal} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
+                      Batal
+                    </button>
+                    <button onClick={modal.onConfirm} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-[#15406A] hover:bg-blue-900">
+                      Ya, Lanjutkan
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={closeModal} className={`px-5 py-2.5 rounded-lg text-sm font-medium text-white ${modal.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
+                    Tutup
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#15406A]">UPTD (ABT)</h1>
-          <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi output UPTD.</p>
+          <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi output UPTD</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg font-medium transition-colors border border-emerald-200">
+          <button onClick={handleDownloadExcel} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg font-medium transition-colors border border-emerald-200">
             <Download className="w-4 h-4" /> Excel
           </button>
           <button onClick={bersihkanTabel} className="flex items-center gap-2 bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-lg font-medium transition-colors border border-red-200">
@@ -152,7 +300,6 @@ export default function UPTDPage() {
         </div>
       </div>
 
-      {/* Peringatan */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
         <p className="text-amber-800 text-sm font-medium leading-relaxed">
@@ -160,7 +307,6 @@ export default function UPTDPage() {
         </p>
       </div>
 
-      {/* Area Tabel */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left border-collapse">
@@ -202,7 +348,7 @@ export default function UPTDPage() {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-gray-400 font-medium">
-                    Tabel masih kosong. Klik Tambah RO Baru untuk memulai.
+                    Tabel masih kosong. Klik Tambah RO untuk memulai.
                   </td>
                 </tr>
               ) : (
@@ -214,8 +360,7 @@ export default function UPTDPage() {
                   const displayPersen = hitungPersen(displayRealisasi, displayOrang);
 
                   return (
-                    <Fragment key={row.id}>
-                      {/* Baris Induk (RO) */}
+                    <React.Fragment key={row.id}>
                       <tr className={`border-b border-gray-200 transition-colors ${hasSub ? "bg-gray-50/50 font-semibold" : "hover:bg-blue-50/30"}`}>
                         <td className="border-r border-gray-200 px-4 py-2 text-center">{index + 1}</td>
                         <td className="border-r border-gray-200 p-0">
@@ -248,17 +393,16 @@ export default function UPTDPage() {
                         <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50 text-[#15406A] font-bold">{displayPersen}%</td>
                         <td className="px-4 py-2 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => tambahSubBaris(row.id)} title="Tambah Sub-RO" className="p-1.5 bg-blue-100 text-[#15406A] rounded hover:bg-blue-200 transition-colors">
+                            <button onClick={() => tambahSubBaris(row.id)} title="Tambah Sub-RO" className="p-1.5 bg-blue-100 text-[#15406A] rounded hover:bg-blue-200">
                               <PlusCircle className="w-4 h-4" />
                             </button>
-                            <button onClick={() => hapusBarisUtama(row.id)} title="Hapus RO" className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
+                            <button onClick={() => hapusBarisUtama(row.id)} title="Hapus RO" className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </td>
                       </tr>
 
-                      {/* Baris Anak (Sub-RO) */}
                       {row.subRows.map((sub) => {
                         const subOrang = hitungOrang(sub.paket);
                         const subPersen = hitungPersen(sub.realisasi, subOrang);
@@ -301,19 +445,18 @@ export default function UPTDPage() {
                             </td>
                             <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-gray-50/50 text-[#15406A] font-semibold text-sm">{subPersen}%</td>
                             <td className="px-4 py-2 text-center">
-                              <button onClick={() => hapusSubBaris(row.id, sub.id)} title="Hapus Sub-RO" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
+                              <button onClick={() => hapusSubBaris(row.id, sub.id)} title="Hapus Sub-RO" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </td>
                           </tr>
                         );
                       })}
-                    </Fragment>
+                    </React.Fragment>
                   );
                 })
               )}
             </tbody>
-            {/* --- TABLE FOOTER: BARIS JUMLAH TOTAL --- */}
             {rows.length > 0 && (
               <tfoot className="bg-amber-400 text-white font-bold tracking-wide">
                 <tr>
@@ -331,7 +474,6 @@ export default function UPTDPage() {
           </table>
         </div>
 
-        {/* Footer / Tombol Tambah Baris */}
         <div className="bg-gray-50 p-4 border-t border-gray-200">
           <button onClick={tambahBarisUtama} className="flex items-center gap-2 text-sm font-bold text-[#15406A] hover:text-blue-800 transition-colors">
             <Plus className="w-5 h-5" /> Tambah RO Baru
@@ -339,15 +481,8 @@ export default function UPTDPage() {
         </div>
       </div>
 
-      {/* Area Simpan */}
       <div className="flex justify-end pt-4">
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={simpanData}
-          disabled={isSaving}
-          className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-[#15406A]/30 transition-all disabled:opacity-70"
-        >
+        <motion.button onClick={simpanData} disabled={isSaving} className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold transition-all disabled:opacity-70">
           {isSaving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="w-5 h-5" />}
           {isSaving ? "Menyimpan..." : "Simpan Data"}
         </motion.button>
