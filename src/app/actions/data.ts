@@ -398,7 +398,7 @@ export type ModulAnggaranGroup = {
 // --- Fungsi Read (Menarik & Mengelompokkan Data dengan Struktur Baru) ---
 export async function getRincianAnggaran() {
   try {
-    const roData = await sql`SELECT * FROM rincian_output ORDER BY modul, created_at ASC`;
+    const roData = await sql`SELECT * FROM rincian_output ORDER BY modul, created_at ASC` as RawRow[];
     const alokasiData = await sql`SELECT * FROM alokasi_anggaran`;
 
     const formatData = (kategori: string): ModulAnggaranGroup[] => {
@@ -444,25 +444,26 @@ export async function getRincianAnggaran() {
         result.push({ modul, alokasi: alokasiMatch ? Number(alokasiMatch.anggaran) : 0, rows: buildRowsForModule(modul) });
       });
 
-      // 2. Masukkan Mega Grup UPTP (Menggabungkan UPTP, UPTD, Satpel, TMT, BLKK, LPKS)
+      // 2. Masukkan Mega Grup UPTP
       const hasUptpData = filtered.some((r) => uptpGroupModules.includes(r.modul));
       const uptpAlokasiMatch = alokasiKategori.find((a) => a.nama_modul.toLowerCase().includes("uptp"));
 
       if (hasUptpData || uptpAlokasiMatch) {
         const PARENT_UUID = kategori === "ABT" ? "11111111-1111-1111-1111-111111111111" : "22222222-2222-2222-2222-222222222222";
-        const tmtId = kategori === "ABT" ? "11111111-1111-1111-1111-111111111112" : "22222222-2222-2222-2222-222222222223";
-        const lpksId = kategori === "ABT" ? "11111111-1111-1111-1111-111111111113" : "22222222-2222-2222-2222-222222222224";
-        const blkkId = kategori === "ABT" ? "11111111-1111-1111-1111-111111111114" : "22222222-2222-2222-2222-222222222225";
+        const tmtIdFallback = kategori === "ABT" ? "11111111-1111-1111-1111-111111111112" : "22222222-2222-2222-2222-222222222223";
+        const lpksIdFallback = kategori === "ABT" ? "11111111-1111-1111-1111-111111111113" : "22222222-2222-2222-2222-222222222224";
+        const blkkIdFallback = kategori === "ABT" ? "11111111-1111-1111-1111-111111111114" : "22222222-2222-2222-2222-222222222225";
 
-        const getDummyRow = (dummyId: string, roName: string, modulName: string) => {
-          const dbRow = filtered.find((r) => r.id === dummyId);
+        // PERBAIKAN UTAMA: Ambil ID aslinya jika ada di database!
+        const getIntegrasiRow = (modulName: string, roName: string, fallbackId: string) => {
+          const dbRow = filtered.find((r) => r.modul === modulName && r.parent_id === null);
           return {
-            id: dummyId,
-            kode: dbRow?.kode || "-",
+            id: dbRow ? dbRow.id : fallbackId, // Gunakan ID asli TMT/BLKK/LPKS jika ditemukan
+            kode: dbRow?.kode || "-", // Gunakan kode asli (misal: "53")
             ro: roName,
             anggaran: Number(dbRow?.anggaran || 0),
             realisasi: Number(dbRow?.realisasi_anggaran || 0),
-            fallbackInsert: { kategori, modul: modulName, kode: "-", ro: roName, parent_id: PARENT_UUID },
+            fallbackInsert: dbRow ? undefined : { kategori, modul: modulName, kode: "-", ro: roName, parent_id: PARENT_UUID },
           };
         };
 
@@ -484,8 +485,13 @@ export async function getRincianAnggaran() {
           ro: "Bidang Industri dan Jasa",
           anggaran: Number(parentDbRow?.anggaran || 0),
           realisasi: Number(parentDbRow?.realisasi_anggaran || 0),
-          fallbackInsert: { kategori, modul: "uptp", kode: "4057.SCO.003", ro: "Bidang Industri dan Jasa", parent_id: null },
-          subRows: [getDummyRow(tmtId, "TMT", "tmt"), getDummyRow(blkkId, "BLKK", "blkk"), getDummyRow(lpksId, "LPKS", "lpks"), ...manualSubs],
+          fallbackInsert: parentDbRow ? undefined : { kategori, modul: "uptp", kode: "4057.SCO.003", ro: "Bidang Industri dan Jasa", parent_id: null },
+          subRows: [
+            getIntegrasiRow("tmt", "TMT", tmtIdFallback), 
+            getIntegrasiRow("blkk", "BLKK", blkkIdFallback), 
+            getIntegrasiRow("lpks", "LPKS", lpksIdFallback), 
+            ...manualSubs
+          ],
         };
 
         const otherUptpParents = filtered.filter((r) => r.modul === "uptp" && r.parent_id === null && r.id !== PARENT_UUID);
@@ -557,3 +563,152 @@ export async function simpanBulkRincianAnggaran(payload: {
     return { success: false, error: "Terjadi kesalahan saat menyimpan Rincian Anggaran." };
   }
 }
+// --- Tipe Data Khusus Dashboard ---
+// --- Tipe Data Khusus Dashboard ---
+export type DashboardMetrics = { paket: number; realisasiOrang: number; anggaran: number };
+export type DashboardSubRow = { id: string; kode: string; ro: string; abt: DashboardMetrics; nonAbt: DashboardMetrics };
+export type DashboardRow = { id: string; kode: string; ro: string; abt: DashboardMetrics; nonAbt: DashboardMetrics; subRows: DashboardSubRow[] };
+export type DashboardGroupData = { groupName: string; rows: DashboardRow[] };
+
+// Tipe representasi baris dari database untuk menghindari penggunaan `any`
+type RawRow = {
+  id: string;
+  kategori: string;
+  modul: string;
+  parent_id: string | null;
+  kode: string | null;
+  nama_ro: string;
+  paket: number;
+  realisasi: number;
+  anggaran: number;
+  realisasi_anggaran: number;
+  is_read_only: boolean;
+  data_satpel?: Record<string, { paket?: number; realisasi?: number }>;
+};
+
+export async function getDashboardRekapan() {
+  try {
+    const allData = await sql`SELECT * FROM rincian_output ORDER BY created_at ASC` as RawRow[];
+
+    const normalized: RawRow[] = allData.map((d) => {
+      if (d.modul === 'satpel' && d.data_satpel) {
+        let p = 0, r = 0;
+        Object.values(d.data_satpel).forEach((val) => {
+          p += Number(val.paket || 0); 
+          r += Number(val.realisasi || 0);
+        });
+        return { ...d, paket: p, realisasi: r };
+      }
+      return d;
+    });
+
+    const abtData = normalized.filter((d) => d.kategori === 'ABT');
+    const nonAbtData = normalized.filter((d) => d.kategori === 'NON-ABT');
+
+    const getMetrics = (row?: RawRow): DashboardMetrics => ({
+      paket: Number(row?.paket || 0),
+      realisasiOrang: Number(row?.realisasi || 0),
+      anggaran: Number(row?.anggaran || 0)
+    });
+
+    // PERBAIKAN DASHBOARD: Sinkronkan hanya berdasarkan NAMA_RO agar ABT/NON-ABT tetap selaras walau Kode beda
+    const alignRows = (parentsAbt: RawRow[], parentsNon: RawRow[], childrenAbtAll: RawRow[], childrenNonAll: RawRow[], prefix: string = ""): DashboardRow[] => {
+      const uniqueKeys = Array.from(new Set([
+        ...parentsAbt.map(p => (p.nama_ro || '').toLowerCase().trim()),
+        ...parentsNon.map(p => (p.nama_ro || '').toLowerCase().trim())
+      ]));
+
+      return uniqueKeys.map(key => {
+        const pAbt = parentsAbt.find(p => (p.nama_ro || '').toLowerCase().trim() === key);
+        const pNon = parentsNon.find(p => (p.nama_ro || '').toLowerCase().trim() === key);
+        const baseP = (pAbt || pNon)!;
+
+        const cAbtList = pAbt ? childrenAbtAll.filter(c => c.parent_id === pAbt.id) : [];
+        const cNonList = pNon ? childrenNonAll.filter(c => c.parent_id === pNon.id) : [];
+
+        const uniqueChildKeys = Array.from(new Set([
+          ...cAbtList.map(c => (c.nama_ro || '').toLowerCase().trim()),
+          ...cNonList.map(c => (c.nama_ro || '').toLowerCase().trim())
+        ]));
+
+        const subRows: DashboardSubRow[] = uniqueChildKeys.map(cKey => {
+          const cAbt = cAbtList.find(c => (c.nama_ro || '').toLowerCase().trim() === cKey);
+          const cNon = cNonList.find(c => (c.nama_ro || '').toLowerCase().trim() === cKey);
+          const baseC = (cAbt || cNon)!;
+
+          return {
+            id: baseC.id, kode: baseC.kode || "-", ro: baseC.nama_ro,
+            abt: getMetrics(cAbt), nonAbt: getMetrics(cNon)
+          };
+        });
+
+        return {
+          id: baseP.id, kode: baseP.kode || "-", ro: prefix ? `${prefix} ${baseP.nama_ro}` : baseP.nama_ro,
+          abt: getMetrics(pAbt), nonAbt: getMetrics(pNon), subRows
+        };
+      });
+    };
+
+    const sertifAbt = abtData.filter(d => ['sertifikasi-kompetensi', 'sertifikasi'].includes(d.modul) && d.parent_id === null);
+    const sertifNon = nonAbtData.filter(d => ['sertifikasi-kompetensi', 'sertifikasi'].includes(d.modul) && d.parent_id === null);
+    const rowsSertif = alignRows(sertifAbt, sertifNon, abtData, nonAbtData);
+
+    const prodAbt = abtData.filter(d => d.modul === 'produktivitas' && d.parent_id === null);
+    const prodNon = nonAbtData.filter(d => d.modul === 'produktivitas' && d.parent_id === null);
+    const rowsProd = alignRows(prodAbt, prodNon, abtData, nonAbtData);
+
+    const buildUptpMegaGroup = () => {
+      const abtMainId = "11111111-1111-1111-1111-111111111111";
+      const nonMainId = "22222222-2222-2222-2222-222222222222";
+
+      const uptpParentsAbt = abtData.filter(d => d.modul === 'uptp' && d.parent_id === null);
+      const uptpParentsNon = nonAbtData.filter(d => d.modul === 'uptp' && d.parent_id === null);
+
+      if (!uptpParentsAbt.some(p => p.id === abtMainId)) uptpParentsAbt.push({ id: abtMainId, kode: "4057.SCO.003", nama_ro: "Bidang Industri dan Jasa", modul: "uptp", parent_id: null } as RawRow);
+      if (!uptpParentsNon.some(p => p.id === nonMainId)) uptpParentsNon.push({ id: nonMainId, kode: "4057.SCO.003", nama_ro: "Bidang Industri dan Jasa", modul: "uptp", parent_id: null } as RawRow);
+
+      const uptpChildrenAbt = abtData.filter(d => d.modul === 'uptp' && d.parent_id !== null);
+      const uptpChildrenNon = nonAbtData.filter(d => d.modul === 'uptp' && d.parent_id !== null);
+
+      const injectIntegrasi = (sourceData: RawRow[], targetParentId: string): RawRow[] => {
+        const injects: RawRow[] = [];
+        const tmt = sourceData.find(d => d.modul === 'tmt' && d.parent_id === null);
+        const blkk = sourceData.find(d => d.modul === 'blkk' && d.parent_id === null);
+        const lpks = sourceData.find(d => d.modul === 'lpks' && d.parent_id === null);
+        
+        if (tmt) injects.push({ ...tmt, parent_id: targetParentId, nama_ro: "TMT" });
+        if (blkk) injects.push({ ...blkk, parent_id: targetParentId, nama_ro: "BLKK" });
+        if (lpks) injects.push({ ...lpks, parent_id: targetParentId, nama_ro: "LPKS" });
+        
+        return injects;
+      };
+
+      const allUptpChildrenAbt = [...uptpChildrenAbt, ...injectIntegrasi(abtData, abtMainId)];
+      const allUptpChildrenNon = [...uptpChildrenNon, ...injectIntegrasi(nonAbtData, nonMainId)];
+
+      const alignedUptp = alignRows(uptpParentsAbt, uptpParentsNon, allUptpChildrenAbt, allUptpChildrenNon);
+
+      const satAbt = abtData.filter(d => d.modul === 'satpel' && d.parent_id === null);
+      const satNon = nonAbtData.filter(d => d.modul === 'satpel' && d.parent_id === null);
+      const alignedSatpel = alignRows(satAbt, satNon, abtData, nonAbtData, "[SATPEL]");
+
+      const uptdAbt = abtData.filter(d => d.modul === 'uptd' && d.parent_id === null);
+      const uptdNon = nonAbtData.filter(d => d.modul === 'uptd' && d.parent_id === null);
+      const alignedUptd = alignRows(uptdAbt, uptdNon, abtData, nonAbtData, "[UPTD]");
+
+      return [...alignedUptp, ...alignedSatpel, ...alignedUptd];
+    };
+
+    return {
+      success: true,
+      data: [
+        { groupName: "Sertifikasi Kompetensi", rows: rowsSertif },
+        { groupName: "UPTP", rows: buildUptpMegaGroup() },
+        { groupName: "Produktivitas", rows: rowsProd }
+      ]
+    };
+  } catch (error: unknown) {
+    if (error instanceof Error) return { success: false, error: error.message };
+    return { success: false, error: "Gagal memuat data Dashboard." };
+  }
+}   
