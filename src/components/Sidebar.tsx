@@ -13,39 +13,26 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-const subMenuList = [
-  {
-    name: "Sertifikasi Kompetensi",
-    slug: "sertifikasi-kompetensi",
-  },
-  {
-    name: "UPTP",
-    slug: "uptp",
-  },
-  {
-    name: "Produktivitas",
-    slug: "produktivitas",
-  },
-  {
-    name: "Satpel",
-    slug: "satpel",
-  },
-  {
-    name: "UPTD",
-    slug: "uptd",
-  },
-  {
-    name: "BLKK",
-    slug: "blkk",
-  },
-  {
-    name: "LPKS",
-    slug: "lpks",
-  },
-  {
-    name: "TMT",
-    slug: "tmt",
-  },
+const abtSubMenuList = [
+  { name: "Sertifikasi Kompetensi", slug: "sertifikasi-kompetensi" },
+  { name: "UPTP", slug: "uptp" },
+  { name: "Satpel", slug: "satpel" },
+  { name: "TMT", slug: "tmt" },
+  { name: "LPKS", slug: "lpks" },
+  { name: "BLKK", slug: "blkk" },
+  { name: "UPTD", slug: "uptd" },
+];
+
+const nonAbtSubMenuList = [
+  { name: "Sertifikasi Kompetensi", slug: "sertifikasi-kompetensi" },
+  { name: "UPTP", slug: "uptp" },
+  { name: "Satpel", slug: "satpel" },
+  { name: "TMT", slug: "tmt" },
+  { name: "LPKS", slug: "lpks" },
+  { name: "BLKK", slug: "blkk" },
+  { name: "UPTD", slug: "uptd" },
+  { name: "PLFK", slug: "plfk" },
+  { name: "Produktivitas", slug: "produktivitas" },
 ];
 
 const menuItems = [
@@ -57,7 +44,7 @@ const menuItems = [
   {
     name: "ABT",
     icon: Briefcase,
-    submenus: subMenuList.map((sub) => ({
+    submenus: abtSubMenuList.map((sub) => ({
       name: sub.name,
       href: `/admin/abt/${sub.slug}`,
     })),
@@ -65,7 +52,7 @@ const menuItems = [
   {
     name: "NON ABT",
     icon: FileText,
-    submenus: subMenuList.map((sub) => ({
+    submenus: nonAbtSubMenuList.map((sub) => ({
       name: sub.name,
       href: `/admin/non-abt/${sub.slug}`,
     })),
@@ -212,7 +199,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 <h1 className="truncate text-[17px] font-extrabold tracking-tight text-white">SIM-PVN</h1>
 
                 <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-200/70">BBPVP Makassar</p>
-
               </div>
             </div>
           </div>
