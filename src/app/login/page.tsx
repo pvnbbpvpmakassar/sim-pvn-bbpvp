@@ -3,16 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Mail,
-  Lock,
-  ArrowRight,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  Building2,
-  AlertCircle,
-} from "lucide-react";
+import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { login } from "../actions/auth";
 
@@ -42,40 +33,33 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#071b2d] text-white">
+    <main className="relative min-h-screen overflow-hidden bg-[#061a2b] text-white">
       {/* =====================================================
-          BACKGROUND IMAGE
+          BACKGROUND
       ====================================================== */}
+
       <div className="absolute inset-0">
-        <Image
-          src="/login.webp"
-          alt="Gedung BBPVP Makassar"
-          fill
-          priority
-          quality={82}
-          sizes="100vw"
-          className="object-cover object-center"
-        />
+        <Image src="/login.webp" alt="Gedung BBPVP Makassar" fill priority quality={82} sizes="100vw" className="object-cover object-center" />
 
-        {/* Overall dark overlay */}
-        <div className="absolute inset-0 bg-[#061a2b]/10" />
+        {/* Dark overall overlay */}
+        <div className="absolute inset-0 bg-[#061a2b]/20" />
 
-        {/* Left subtle dark gradient */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#061a2b]/75 via-[#061a2b]/20 to-[#061a2b]/30" />
+        {/* Left overlay */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#061a2b]/80 via-[#061a2b]/25 to-transparent" />
 
-        {/* Right gradient untuk area login */}
-        <div className="absolute inset-0 bg-gradient-to-l from-[#061a2b]/90 via-[#061a2b]/55 to-transparent" />
+        {/* Right overlay untuk login */}
+        <div className="absolute inset-0 bg-gradient-to-l from-[#061a2b]/95 via-[#061a2b]/60 to-transparent" />
 
-        {/* Bottom gradient */}
-        <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-[#061a2b]/80 to-transparent" />
+        {/* Bottom overlay */}
+        <div className="absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-[#061a2b]/80 to-transparent" />
       </div>
 
       {/* =====================================================
-          DECORATIVE LIGHT
+          ANIMATED LIGHT
       ====================================================== */}
 
       <motion.div
-        className="absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-blue-400/10 blur-3xl"
+        className="pointer-events-none absolute -right-40 -top-40 h-[550px] w-[550px] rounded-full bg-blue-400/10 blur-3xl"
         animate={{
           scale: [1, 1.08, 1],
           opacity: [0.25, 0.4, 0.25],
@@ -88,9 +72,9 @@ export default function LoginPage() {
       />
 
       <motion.div
-        className="absolute -left-32 bottom-0 h-[400px] w-[400px] rounded-full bg-cyan-400/10 blur-3xl"
+        className="pointer-events-none absolute -bottom-40 -left-40 h-[450px] w-[450px] rounded-full bg-cyan-400/10 blur-3xl"
         animate={{
-          x: [0, 30, 0],
+          x: [0, 25, 0],
           y: [0, -20, 0],
         }}
         transition={{
@@ -101,112 +85,239 @@ export default function LoginPage() {
       />
 
       {/* =====================================================
-          CONTENT
+          MAIN CONTENT
       ====================================================== */}
 
       <div className="relative z-10 flex min-h-screen w-full">
-        {/* =================================================
-            LEFT BRANDING
-        ================================================== */}
+        {/* ===================================================
+            LEFT SIDE
+        ==================================================== */}
 
         <motion.section
-          initial={{ opacity: 0, x: -40 }}
+          initial={{ opacity: 0, x: -35 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="hidden lg:flex lg:w-[55%] xl:w-[60%] flex-col justify-between p-10 xl:p-14"
+          transition={{
+            duration: 0.8,
+            ease: "easeOut",
+          }}
+          className="hidden lg:flex lg:w-[58%] xl:w-[60%] flex-col justify-between p-10 xl:p-14"
         >
-          {/* Top */}
-          <div className="flex items-center gap-3">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.7 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{
-                delay: 0.2,
-                duration: 0.5,
-                type: "spring",
-              }}
-              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur-md"
-            >
-              <Building2 className="h-5 w-5 text-white" />
-            </motion.div>
+          {/* =================================================
+              LOGO AREA
+          ================================================== */}
 
-            <div>
-              <p className="text-sm font-semibold tracking-wide text-white">
-                BBPVP MAKASSAR
-              </p>
-              <p className="text-xs text-white/60">
-                Balai Besar Pelatihan Vokasi dan Produktivitas
-              </p>
+          <div>
+            <div className="flex items-center gap-4">
+              {/* =================================================
+      LOGO KEMENTERIAN KETENAGAKERJAAN
+  ================================================== */}
+
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{
+                  delay: 0.2,
+                  duration: 0.6,
+                  ease: "easeOut",
+                }}
+                className="flex items-center gap-3"
+              >
+                {/* Logo Card */}
+                <motion.div
+                  whileHover={{
+                    y: -2,
+                    scale: 1.03,
+                  }}
+                  transition={{
+                    duration: 0.2,
+                  }}
+                  className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/50 bg-white p-2 shadow-lg shadow-black/10"
+                >
+                  <Image src="/logo-kemnaker.png" alt="Kementerian Ketenagakerjaan" width={60} height={60} priority className="h-full w-full object-contain" />
+                </motion.div>
+
+                {/* Text */}
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold tracking-wide text-white">Kementerian</p>
+
+                  <p className="text-sm font-semibold tracking-wide text-white">Ketenagakerjaan</p>
+                </div>
+              </motion.div>
+
+              {/* =================================================
+      SEPARATOR
+  ================================================== */}
+
+              <motion.div
+                initial={{
+                  opacity: 0,
+                  scaleY: 0,
+                }}
+                animate={{
+                  opacity: 1,
+                  scaleY: 1,
+                }}
+                transition={{
+                  delay: 0.4,
+                  duration: 0.5,
+                }}
+                className="mx-1 h-12 w-px origin-center bg-white/30"
+              />
+
+              {/* =================================================
+      LOGO BBPVP
+  ================================================== */}
+
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{
+                  delay: 0.3,
+                  duration: 0.6,
+                  ease: "easeOut",
+                }}
+                className="flex items-center gap-3"
+              >
+                {/* Logo Card */}
+                <motion.div
+                  whileHover={{
+                    y: -2,
+                    scale: 1.03,
+                  }}
+                  transition={{
+                    duration: 0.2,
+                  }}
+                  className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/50 bg-white p-2 shadow-lg shadow-black/10"
+                >
+                  <Image src="/logo-bbpvp-makassar.png" alt="BBPVP Makassar" width={60} height={60} priority className="h-full w-full object-contain" />
+                </motion.div>
+
+                {/* Text */}
+                <div className="max-w-[230px] leading-tight">
+                  <p className="text-sm font-semibold tracking-wide text-white">Balai Besar Pelatihan</p>
+
+                  <p className="text-sm font-semibold tracking-wide text-white">Vokasi dan Produktivitas</p>
+
+                  <p className="text-sm font-semibold tracking-wide text-white">Makassar</p>
+                </div>
+              </motion.div>
             </div>
+
+            {/* Small line under branding */}
+            <motion.div
+              initial={{
+                opacity: 0,
+                width: 0,
+              }}
+              animate={{
+                opacity: 1,
+                width: 55,
+              }}
+              transition={{
+                delay: 0.7,
+                duration: 0.6,
+              }}
+              className="mt-8 h-[2px] rounded-full bg-white/70"
+            />
           </div>
 
-          {/* Bottom hero text */}
-          <div className="max-w-xl pb-4">
-            <motion.div
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: 70 }}
-              transition={{ delay: 0.5, duration: 0.6 }}
-              className="mb-6 h-1 rounded-full bg-white"
-            />
+          {/* =================================================
+              HERO TEXT
+          ================================================== */}
 
+          <div className="max-w-xl pb-5">
             <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.45, duration: 0.7 }}
-              className="mb-3 text-sm font-medium uppercase tracking-[0.25em] text-white/60"
+              initial={{
+                opacity: 0,
+                y: 15,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              transition={{
+                delay: 0.65,
+                duration: 0.7,
+              }}
+              className="mb-3 text-xs font-medium uppercase tracking-[0.3em] text-white/60"
             >
               Sistem Informasi Manajemen
             </motion.p>
 
             <motion.h1
-              initial={{ opacity: 0, y: 25 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.55, duration: 0.8 }}
-              className="text-4xl font-bold leading-tight tracking-tight text-white xl:text-5xl"
+              initial={{
+                opacity: 0,
+                y: 25,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              transition={{
+                delay: 0.75,
+                duration: 0.8,
+              }}
+              className="text-4xl font-bold leading-[1.1] tracking-tight text-white xl:text-5xl"
             >
               Portal Digital
               <br />
-              <span className="text-white/75">BBPVP Makassar</span>
+              <span className="text-white/70">BBPVP Makassar</span>
             </motion.h1>
 
             <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7, duration: 0.7 }}
-              className="mt-5 max-w-lg text-sm leading-7 text-white/65"
+              initial={{
+                opacity: 0,
+                y: 20,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              transition={{
+                delay: 0.9,
+                duration: 0.7,
+              }}
+              className="mt-5 max-w-lg text-sm leading-7 text-white/60"
             >
-              Akses sistem informasi dan layanan manajemen BBPVP Makassar
-              melalui satu portal terintegrasi.
+              Akses sistem informasi dan layanan manajemen BBPVP Makassar melalui satu portal terintegrasi.
             </motion.p>
           </div>
         </motion.section>
 
-        {/* =================================================
-            RIGHT LOGIN
-        ================================================== */}
+        {/* ===================================================
+            RIGHT SIDE - LOGIN
+        ==================================================== */}
 
-        <section className="flex w-full items-center justify-center px-5 py-10 sm:px-8 lg:w-[45%] lg:justify-end lg:px-10 xl:w-[40%] xl:px-16">
+        <section className="flex w-full items-center justify-center px-5 py-10 sm:px-8 lg:w-[42%] lg:justify-end lg:px-8 xl:w-[40%] xl:px-14">
           <motion.div
-            initial={{ opacity: 0, x: 50, filter: "blur(8px)" }}
-            animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+            initial={{
+              opacity: 0,
+              x: 50,
+              filter: "blur(8px)",
+            }}
+            animate={{
+              opacity: 1,
+              x: 0,
+              filter: "blur(0px)",
+            }}
             transition={{
               duration: 0.8,
-              delay: 0.15,
+              delay: 0.2,
               ease: [0.22, 1, 0.36, 1],
             }}
-            className="w-full max-w-[440px]"
+            className="w-full max-w-[430px]"
           >
             {/* =================================================
                 GLASS LOGIN PANEL
             ================================================== */}
 
-            <div className="relative overflow-hidden rounded-[28px] border border-white/15 bg-[#071b2d]/55 p-7 shadow-2xl shadow-black/30 backdrop-blur-2xl sm:p-9">
-              {/* Glass shine */}
+            <div className="relative overflow-hidden rounded-[28px] border border-white/15 bg-[#061a2b]/60 p-7 shadow-2xl shadow-black/30 backdrop-blur-2xl sm:p-9">
+              {/* Glass highlight */}
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.10] via-transparent to-transparent" />
 
-              {/* Top animated line */}
+              {/* Animated top border */}
               <motion.div
-                className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent"
+                className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-white/60 to-transparent"
                 animate={{
                   opacity: [0.2, 0.8, 0.2],
                 }}
@@ -222,41 +333,54 @@ export default function LoginPage() {
                     HEADER
                 ================================================== */}
 
-                <div className="mb-9">
+                <div className="mb-8">
                   <motion.div
-                    initial={{ scale: 0, rotate: -20 }}
-                    animate={{ scale: 1, rotate: 0 }}
+                    initial={{
+                      scale: 0,
+                      rotate: -20,
+                    }}
+                    animate={{
+                      scale: 1,
+                      rotate: 0,
+                    }}
                     transition={{
-                      delay: 0.4,
+                      delay: 0.45,
                       type: "spring",
                       stiffness: 180,
                       damping: 12,
                     }}
-                    className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-lg shadow-black/10"
+                    className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-lg"
                   >
                     <ShieldCheck className="h-7 w-7 text-white" />
                   </motion.div>
 
-                  <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                    Selamat Datang
-                  </h2>
+                  <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Selamat Datang</h2>
 
-                  <p className="mt-2 text-sm leading-6 text-white/55">
-                    Masuk untuk mengakses dashboard administrasi BBPVP
-                    Makassar.
-                  </p>
+                  <p className="mt-2 text-sm leading-6 text-white/55">Masuk untuk mengakses dashboard administrasi BBPVP Makassar.</p>
                 </div>
 
                 {/* =================================================
-                    ERROR
+                    ERROR MESSAGE
                 ================================================== */}
 
                 <AnimatePresence>
                   {errorMessage && (
                     <motion.div
-                      initial={{ opacity: 0, height: 0, y: -10 }}
-                      animate={{ opacity: 1, height: "auto", y: 0 }}
-                      exit={{ opacity: 0, height: 0, y: -10 }}
+                      initial={{
+                        opacity: 0,
+                        height: 0,
+                        y: -10,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        height: "auto",
+                        y: 0,
+                      }}
+                      exit={{
+                        opacity: 0,
+                        height: 0,
+                        y: -10,
+                      }}
                       className="mb-5 overflow-hidden"
                     >
                       <div className="flex items-start gap-3 rounded-xl border border-red-300/20 bg-red-500/10 p-3.5 text-sm text-red-100">
@@ -273,11 +397,9 @@ export default function LoginPage() {
                 ================================================== */}
 
                 <form onSubmit={handleLogin} className="space-y-5">
-                  {/* Email */}
+                  {/* EMAIL */}
                   <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/60">
-                      Alamat Email
-                    </label>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/60">Alamat Email</label>
 
                     <div className="group relative">
                       <Mail className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/35 transition-colors group-focus-within:text-white/80" />
@@ -295,11 +417,9 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Password */}
+                  {/* PASSWORD */}
                   <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/60">
-                      Kata Sandi
-                    </label>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/60">Kata Sandi</label>
 
                     <div className="group relative">
                       <Lock className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/35 transition-colors group-focus-within:text-white/80" />
@@ -317,34 +437,25 @@ export default function LoginPage() {
                         type="button"
                         onClick={() => setShowPassword((prev) => !prev)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-white/35 transition-colors hover:text-white"
-                        aria-label={
-                          showPassword
-                            ? "Sembunyikan kata sandi"
-                            : "Tampilkan kata sandi"
-                        }
+                        aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
                       >
-                        {showPassword ? (
-                          <EyeOff className="h-[18px] w-[18px]" />
-                        ) : (
-                          <Eye className="h-[18px] w-[18px]" />
-                        )}
+                        {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
                       </button>
 
                       <div className="pointer-events-none absolute bottom-0 left-4 right-4 h-px origin-left scale-x-0 bg-white/70 transition-transform duration-300 group-focus-within:scale-x-100" />
                     </div>
                   </div>
 
-                  {/* Remember */}
+                  {/* OPTIONS */}
                   <div className="flex items-center justify-between pt-1">
                     <label className="flex cursor-pointer items-center gap-2 text-xs text-white/50 transition-colors hover:text-white/80">
-                      <input
-                        type="checkbox"
-                        name="remember"
-                        className="h-4 w-4 rounded border-white/20 bg-white/10 text-[#15406A] focus:ring-white/20"
-                      />
+                      <input type="checkbox" name="remember" className="h-4 w-4 rounded border-white/20 bg-white/10 text-[#15406A] focus:ring-white/20" />
                       Ingat sesi saya
                     </label>
 
+                    <button type="button" className="text-xs font-semibold text-white/60 transition-colors hover:text-white">
+                      Lupa sandi?
+                    </button>
                   </div>
 
                   {/* =================================================
@@ -363,7 +474,7 @@ export default function LoginPage() {
                     disabled={isLoading}
                     className="group relative mt-3 flex h-14 w-full items-center justify-center overflow-hidden rounded-xl bg-white font-bold text-[#15406A] shadow-xl shadow-black/20 transition-all hover:shadow-2xl hover:shadow-black/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {/* Button shine */}
+                    {/* Button shimmer */}
                     <motion.span
                       className="absolute inset-y-0 -left-20 w-16 skew-x-[-20deg] bg-gradient-to-r from-transparent via-[#15406A]/10 to-transparent"
                       animate={{
@@ -380,12 +491,12 @@ export default function LoginPage() {
                     {isLoading ? (
                       <div className="relative flex items-center gap-3">
                         <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#15406A]/20 border-t-[#15406A]" />
+
                         <span>Memproses...</span>
                       </div>
                     ) : (
                       <span className="relative flex items-center gap-2">
                         Masuk ke Dashboard
-
                         <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                       </span>
                     )}
@@ -397,39 +508,30 @@ export default function LoginPage() {
                 ================================================== */}
 
                 <div className="mt-8 border-t border-white/10 pt-5 text-center">
-                  <p className="text-[11px] leading-5 text-white/35">
-                    Akses terbatas untuk administrator yang memiliki
-                    kewenangan.
-                  </p>
+                  <p className="text-[11px] leading-5 text-white/35">Akses terbatas untuk administrator yang memiliki kewenangan.</p>
 
-                  <p className="mt-1 text-[10px] text-white/20">
-                    © {new Date().getFullYear()} BBPVP Makassar
-                  </p>
+                  <p className="mt-1 text-[10px] text-white/20">© {new Date().getFullYear()} BBPVP Makassar</p>
                 </div>
               </div>
             </div>
 
-            {/* Mobile branding */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1 }}
-              className="mt-6 text-center lg:hidden"
-            >
-              <p className="text-xs font-semibold tracking-wider text-white/70">
-                BBPVP MAKASSAR
-              </p>
+            {/* =================================================
+                MOBILE BRANDING
+            ================================================== */}
 
-              <p className="mt-1 text-[10px] text-white/40">
-                Sistem Informasi Manajemen
-              </p>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="mt-6 flex items-center justify-center gap-4 lg:hidden">
+              <Image src="/logo-kemnaker.png" alt="Kementerian Ketenagakerjaan" width={42} height={42} className="h-10 w-auto object-contain" />
+
+              <div className="h-9 w-px bg-white/25" />
+
+              <Image src="/logo-bbpvp-makassar.png" alt="BBPVP Makassar" width={12} height={12} className="h-10 w-auto object-contain" />
             </motion.div>
           </motion.div>
         </section>
       </div>
 
       {/* =====================================================
-          ANIMATED GRAIN / LIGHT
+          SUBTLE HORIZONTAL LIGHT
       ====================================================== */}
 
       <motion.div
