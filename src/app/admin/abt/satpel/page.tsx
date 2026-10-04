@@ -6,9 +6,9 @@ import { Save, Download, Trash2, Plus, PlusCircle, AlertCircle, RefreshCw, Corne
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-import { getSatpelData, simpanSatpelData, LokasiSatpel, SatpelRowData } from "@/app/actions/data";
+import { getSatpelData, simpanSatpelData } from "@/app/actions/data";
 
-type DataValue = { paket: number; realisasi: number };
+type DataValue = { paket: number; orang?: number; realisasi: number };
 type SubRow = { id: string; kode: string; ro: string; data: Record<string, DataValue> };
 type Row = { id: string; kode: string; ro: string; data: Record<string, DataValue>; subRows: SubRow[] };
 type LocationCol = { id: string; name: string };
@@ -45,12 +45,12 @@ export default function SatpelPage() {
   const tambahLokasi = () => setLocations([...locations, { id: crypto.randomUUID(), name: `Satpel ${locations.length + 1}` }]);
   const updateNamaLokasi = (id: string, newName: string) => setLocations(locations.map((loc) => (loc.id === id ? { ...loc, name: newName } : loc)));
   const hapusLokasi = (id: string) => {
-    if (locations.length === 1) return setModal({ isOpen: true, type: "error", title: "Gagal", message: "Tabel harus memiliki minimal satu kolom lokasi." });
+    if (locations.length === 1) return setModal({ isOpen: true, type: "error", title: "Gagal", message: "Halaman ini harus memiliki minimal satu tabel lokasi." });
     setModal({
       isOpen: true,
       type: "confirm",
-      title: "Hapus Lokasi?",
-      message: "Kolom ini beserta datanya akan dihapus dari layar.",
+      title: "Hapus Tabel Lokasi?",
+      message: "Tabel lokasi ini beserta datanya akan dihapus dari layar.",
       onConfirm: () => {
         setLocations(locations.filter((loc) => loc.id !== id));
         closeModal();
@@ -65,7 +65,7 @@ export default function SatpelPage() {
       isOpen: true,
       type: "confirm",
       title: "Hapus RO?",
-      message: "Lanjutkan menghapus rincian ini?",
+      message: "Lanjutkan menghapus rincian ini beserta sub-rinciannya dari seluruh lokasi?",
       onConfirm: () => {
         setRows(rows.filter((row) => row.id !== id));
         closeModal();
@@ -76,7 +76,7 @@ export default function SatpelPage() {
       isOpen: true,
       type: "confirm",
       title: "Hapus Sub-RO?",
-      message: "Hapus sub-rincian ini?",
+      message: "Hapus sub-rincian ini dari seluruh lokasi?",
       onConfirm: () => {
         setRows(rows.map((row) => (row.id === parentId ? { ...row, subRows: row.subRows.filter((sub) => sub.id !== subId) } : row)));
         closeModal();
@@ -87,8 +87,8 @@ export default function SatpelPage() {
     setModal({
       isOpen: true,
       type: "confirm",
-      title: "Bersihkan Tabel?",
-      message: "Semua baris data akan dihapus.",
+      title: "Bersihkan Seluruh Data?",
+      message: "Semua baris data akan dihapus dari seluruh lokasi.",
       onConfirm: () => {
         setRows([]);
         closeModal();
@@ -108,73 +108,48 @@ export default function SatpelPage() {
       ),
     );
 
+  const getDisplayData = (row: Row, locId: string) => {
+    const hasSub = row.subRows.length > 0;
+    if (hasSub) {
+      return {
+        paket: row.subRows.reduce((sum, sub) => sum + (sub.data[locId]?.paket || 0), 0),
+        realisasi: row.subRows.reduce((sum, sub) => sum + (sub.data[locId]?.realisasi || 0), 0),
+      };
+    }
+    return { paket: row.data[locId]?.paket || 0, realisasi: row.data[locId]?.realisasi || 0 };
+  };
+
   const simpanData = async () => {
     setIsSaving(true);
-    const result = await simpanSatpelData("ABT", locations, rows);
-    if (result.success) {
-      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Satpel berhasil disimpan ke Database!" });
-    } else {
-      setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan: ${result.error}` });
-    }
+    const rowsToSave = rows.map((row) => {
+      const newData = { ...row.data };
+      locations.forEach((loc) => {
+        if (newData[loc.id]) newData[loc.id] = { ...newData[loc.id], orang: hitungOrang(newData[loc.id].paket || 0) };
+      });
+      const newSubRows = row.subRows.map((sub) => {
+        const newSubData = { ...sub.data };
+        locations.forEach((loc) => {
+          if (newSubData[loc.id]) newSubData[loc.id] = { ...newSubData[loc.id], orang: hitungOrang(newSubData[loc.id].paket || 0) };
+        });
+        return { ...sub, data: newSubData };
+      });
+      return { ...row, data: newData, subRows: newSubRows };
+    });
+
+    const result = await simpanSatpelData("ABT", locations, rowsToSave);
+    if (result.success) setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Satpel berhasil disimpan ke Database!" });
+    else setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan: ${result.error}` });
     setIsSaving(false);
   };
 
+  // --- Disesuaikan untuk Mengekspor Banyak Tabel Secara Vertikal ---
   const handleDownloadExcel = async () => {
-    if (rows.length === 0) return setModal({ isOpen: true, type: "error", title: "Gagal Mengunduh", message: "Tabel masih kosong." });
+    if (rows.length === 0) return setModal({ isOpen: true, type: "error", title: "Gagal Mengunduh", message: "Data masih kosong." });
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Satpel");
 
-    // Definisikan Lebar Kolom Dasar
-    const columns: Partial<ExcelJS.Column>[] = [{ width: 8 }, { width: 15 }, { width: 45 }];
-    // Tambah 4 Kolom per Lokasi
-    locations.forEach(() => {
-      columns.push({ width: 18 }, { width: 18 }, { width: 18 }, { width: 15 });
-    });
-    worksheet.columns = columns;
-
-    // --- SETUP HEADER DINAMIS ---
-    const row1 = worksheet.addRow(["NO.", "KODE", "RINCIAN OUTPUT (RO)"]);
-    const row2 = worksheet.addRow(["", "", ""]);
-    const row3 = worksheet.addRow(["", "", ""]);
-
-    let colIndex = 4; // Dimulai dari kolom D
-    locations.forEach((loc) => {
-      // Baris 1 (Nama Lokasi)
-      row1.getCell(colIndex).value = loc.name;
-      worksheet.mergeCells(1, colIndex, 1, colIndex + 3);
-      // Baris 2 (Target, Realisasi, Persen)
-      row2.getCell(colIndex).value = "Target";
-      worksheet.mergeCells(2, colIndex, 2, colIndex + 1);
-      row2.getCell(colIndex + 2).value = "Realisasi";
-      worksheet.mergeCells(2, colIndex + 2, 3, colIndex + 2);
-      row2.getCell(colIndex + 3).value = "Persen (%)";
-      worksheet.mergeCells(2, colIndex + 3, 3, colIndex + 3);
-      // Baris 3 (Paket, Orang)
-      row3.getCell(colIndex).value = "Paket";
-      row3.getCell(colIndex + 1).value = "Orang";
-
-      colIndex += 4;
-    });
-
-    worksheet.mergeCells("A1:A3");
-    worksheet.mergeCells("B1:B3");
-    worksheet.mergeCells("C1:C3");
-
-    // Styling Header
-    [row1, row2, row3].forEach((headerRow) => {
-      headerRow.eachCell({ includeEmpty: true }, (cell) => {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF15406A" } };
-        cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
-        cell.alignment = { vertical: "middle", horizontal: "center" };
-        cell.border = {
-          top: { style: "thin", color: { argb: "FFFFFFFF" } },
-          left: { style: "thin", color: { argb: "FFFFFFFF" } },
-          bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
-          right: { style: "thin", color: { argb: "FFFFFFFF" } },
-        };
-      });
-    });
+    worksheet.columns = [{ width: 6 }, { width: 15 }, { width: 45 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 15 }];
 
     const applyBorder = (row: ExcelJS.Row) => {
       row.eachCell({ includeEmpty: true }, (cell) => {
@@ -190,75 +165,97 @@ export default function SatpelPage() {
       if (roCell) roCell.alignment = { vertical: "middle", horizontal: "left" };
     };
 
-    // --- MASUKKAN DATA ---
-    rows.forEach((row, index) => {
-      const hasSub = row.subRows.length > 0;
+    const globalRowNumber = 1;
 
-      // PERBAIKAN: Gunakan (string | number)[]
-      const parentRowData: (string | number)[] = [index + 1, row.kode, row.ro];
-      locations.forEach((loc) => {
-        const { paket, realisasi } = getDisplayData(row, loc.id);
-        const orang = hitungOrang(paket);
-        parentRowData.push(paket, orang, realisasi, `${hitungPersen(realisasi, orang)}%`);
-      });
-      const parentRow = worksheet.addRow(parentRowData);
-      applyBorder(parentRow);
-      if (hasSub) {
-        parentRow.font = { bold: true };
-        parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } };
-      }
+    const createTable = (title: string, locId: string | "TOTAL") => {
+      const headerTitle = worksheet.addRow(["", "", title.toUpperCase(), "", "", "", ""]);
+      worksheet.mergeCells(`C${headerTitle.number}:G${headerTitle.number}`);
+      headerTitle.getCell(3).fill = { type: "pattern", pattern: "solid", fgColor: { argb: locId === "TOTAL" ? "FFF59E0B" : "FF15406A" } };
+      headerTitle.getCell(3).font = { color: { argb: "FFFFFFFF" }, bold: true };
+      headerTitle.getCell(3).alignment = { vertical: "middle", horizontal: "center" };
 
-      row.subRows.forEach((sub) => {
-        // PERBAIKAN: Gunakan (string | number)[]
-        const subRowData: (string | number)[] = ["", sub.kode, `    ↳ ${sub.ro}`];
-        locations.forEach((loc) => {
-          const paket = sub.data[loc.id]?.paket || 0;
-          const realisasi = sub.data[loc.id]?.realisasi || 0;
-          const orang = hitungOrang(paket);
-          subRowData.push(paket, orang, realisasi, `${hitungPersen(realisasi, orang)}%`);
+      const h1 = worksheet.addRow(["NO.", "KODE", "RINCIAN OUTPUT (RO)", "Target", "", "Realisasi", "Persen (%)"]);
+      worksheet.mergeCells(`D${h1.number}:E${h1.number}`);
+      const h2 = worksheet.addRow(["", "", "", "Paket", "Orang", "", ""]);
+      worksheet.mergeCells(`A${h1.number}:A${h2.number}`);
+      worksheet.mergeCells(`B${h1.number}:B${h2.number}`);
+      worksheet.mergeCells(`C${h1.number}:C${h2.number}`);
+      worksheet.mergeCells(`F${h1.number}:F${h2.number}`);
+      worksheet.mergeCells(`G${h1.number}:G${h2.number}`);
+
+      [h1, h2].forEach((h) => {
+        h.eachCell({ includeEmpty: true }, (c) => {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF184878" } };
+          c.font = { color: { argb: "FFFFFFFF" }, bold: true };
+          c.alignment = { vertical: "middle", horizontal: "center" };
+          c.border = {
+            top: { style: "thin", color: { argb: "FFFFFFFF" } },
+            left: { style: "thin", color: { argb: "FFFFFFFF" } },
+            bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+            right: { style: "thin", color: { argb: "FFFFFFFF" } },
+          };
         });
-        const subRow = worksheet.addRow(subRowData);
-        applyBorder(subRow);
       });
-    });
 
-    // --- BARIS TOTAL ---
-    // PERBAIKAN: Gunakan (string | number)[]
-    const totalRowData: (string | number)[] = ["", "", "JUMLAH TOTAL"];
-    locations.forEach((loc) => {
-      const totalPaket = rows.reduce((sum, row) => sum + getDisplayData(row, loc.id).paket, 0);
-      const totalRealisasi = rows.reduce((sum, row) => sum + getDisplayData(row, loc.id).realisasi, 0);
-      const totalOrang = hitungOrang(totalPaket);
-      totalRowData.push(totalPaket, totalOrang, totalRealisasi, `${hitungPersen(totalRealisasi, totalOrang)}%`);
-    });
+      let sumP = 0;
+      let sumR = 0;
+      rows.forEach((row, idx) => {
+        const hasSub = row.subRows.length > 0;
+        let p = 0;
+        let r = 0;
 
-    const totalRow = worksheet.addRow(totalRowData);
-    totalRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } };
-      cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFFFFFFF" } },
-        left: { style: "thin", color: { argb: "FFFFFFFF" } },
-        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
-        right: { style: "thin", color: { argb: "FFFFFFFF" } },
-      };
-      cell.alignment = { vertical: "middle", horizontal: colNum === 3 ? "right" : "center" };
-    });
-    worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
+        if (locId === "TOTAL") {
+          p = locations.reduce((acc, loc) => acc + getDisplayData(row, loc.id).paket, 0);
+          r = locations.reduce((acc, loc) => acc + getDisplayData(row, loc.id).realisasi, 0);
+        } else {
+          const d = getDisplayData(row, locId);
+          p = d.paket;
+          r = d.realisasi;
+        }
+
+        sumP += p;
+        sumR += r;
+        const o = hitungOrang(p);
+
+        const rMain = worksheet.addRow([idx + 1, row.kode, row.ro, p, o, r, `${hitungPersen(r, o)}%`]);
+        applyBorder(rMain);
+        if (hasSub) {
+          rMain.font = { bold: true };
+          rMain.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } };
+        }
+
+        row.subRows.forEach((sub) => {
+          let sp = 0;
+          let sr = 0;
+          if (locId === "TOTAL") {
+            sp = locations.reduce((acc, loc) => acc + (sub.data[loc.id]?.paket || 0), 0);
+            sr = locations.reduce((acc, loc) => acc + (sub.data[loc.id]?.realisasi || 0), 0);
+          } else {
+            sp = sub.data[locId]?.paket || 0;
+            sr = sub.data[locId]?.realisasi || 0;
+          }
+          const so = hitungOrang(sp);
+          const rSub = worksheet.addRow(["", sub.kode, `    ↳ ${sub.ro}`, sp, so, sr, `${hitungPersen(sr, so)}%`]);
+          applyBorder(rSub);
+        });
+      });
+
+      const soTotal = hitungOrang(sumP);
+      const rTot = worksheet.addRow(["", "", "JUMLAH TOTAL", sumP, soTotal, sumR, `${hitungPersen(sumR, soTotal)}%`]);
+      worksheet.mergeCells(`A${rTot.number}:C${rTot.number}`);
+      rTot.eachCell({ includeEmpty: true }, (cell, col) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: locId === "TOTAL" ? "FFF59E0B" : "FFFFE4B5" } };
+        cell.font = { color: { argb: locId === "TOTAL" ? "FFFFFFFF" : "FF8B4513" }, bold: true };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      });
+      worksheet.addRow([]);
+    };
+
+    locations.forEach((loc) => createTable(`LOKASI: ${loc.name}`, loc.id));
+    createTable("REKAPITULASI KESELURUHAN (TOTAL SEMUA SATPEL)", "TOTAL");
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), "Data_Satpel.xlsx");
-  };
-
-  const getDisplayData = (row: Row, locId: string) => {
-    const hasSub = row.subRows.length > 0;
-    if (hasSub) {
-      return {
-        paket: row.subRows.reduce((sum, sub) => sum + (sub.data[locId]?.paket || 0), 0),
-        realisasi: row.subRows.reduce((sum, sub) => sum + (sub.data[locId]?.realisasi || 0), 0),
-      };
-    }
-    return { paket: row.data[locId]?.paket || 0, realisasi: row.data[locId]?.realisasi || 0 };
+    saveAs(new Blob([buffer]), "Data_Satpel_Terpisah.xlsx");
   };
 
   if (isLoading)
@@ -271,9 +268,7 @@ export default function SatpelPage() {
           <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-
         <p className="text-sm font-semibold text-[#15406A]">Memuat data Satpel</p>
-
         <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
@@ -315,11 +310,11 @@ export default function SatpelPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#15406A]">Satpel (ABT)</h1>
-          <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi multi-lokasi.</p>
+          <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi di masing-masing lokasi secara terpisah.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={tambahLokasi} className="flex items-center gap-2 bg-blue-50 text-[#15406A] hover:bg-blue-100 px-4 py-2 rounded-lg font-bold transition-colors border border-blue-200 shadow-sm">
-            <MapPin className="w-4 h-4" /> Tambah Kolom Lokasi
+            <MapPin className="w-4 h-4" /> Tambah Tabel Lokasi
           </button>
           <button onClick={handleDownloadExcel} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg font-medium transition-colors border border-emerald-200">
             <Download className="w-4 h-4" /> Excel
@@ -333,237 +328,311 @@ export default function SatpelPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
         <p className="text-amber-800 text-sm font-medium leading-relaxed">
-          <span className="font-bold">Peringatan:</span> Pastikan Anda selalu menekan tombol <b className="text-[#15406A]">Simpan Data</b> di bagian bawah tabel setelah selesai menambah atau mengedit.
+          <span className="font-bold">Informasi:</span> RO dan Kode tersinkronisasi di seluruh tabel. Mengubah/Menambah RO di satu tabel akan mengubahnya di tabel lokasi lain.
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-sm text-left border-collapse min-w-max">
-            <thead className="bg-[#15406A] text-white">
-              <tr>
-                <th rowSpan={3} className="sticky left-0 z-20 bg-[#15406A] border border-[#1a4e82] px-4 py-3 text-center w-16">
-                  NO.
-                </th>
-                <th rowSpan={3} className="sticky left-16 z-20 bg-[#15406A] border border-[#1a4e82] px-4 py-3 w-32">
-                  Kode
-                </th>
-                <th rowSpan={3} className="sticky left-48 z-20 bg-[#15406A] border border-[#1a4e82] px-4 py-3 min-w-[250px] shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
-                  Rincian Output (RO)
-                </th>
+      {/* RENDER TABEL PER LOKASI */}
+      {locations.map((loc, locIndex) => {
+        const totalPaketLoc = rows.reduce((sum, row) => sum + getDisplayData(row, loc.id).paket, 0);
+        const totalRealisasiLoc = rows.reduce((sum, row) => sum + getDisplayData(row, loc.id).realisasi, 0);
+        const totalOrangLoc = hitungOrang(totalPaketLoc);
 
-                {locations.map((loc) => (
-                  <th colSpan={4} key={loc.id} className="border border-[#1a4e82] p-0 text-center relative group min-w-[320px]">
-                    <div className="flex items-center justify-center w-full h-full p-2 gap-2">
-                      <input
-                        type="text"
-                        value={loc.name}
-                        onChange={(e) => updateNamaLokasi(loc.id, e.target.value)}
-                        className="bg-transparent outline-none text-center text-white font-extrabold w-full focus:bg-[#184878] rounded px-2 py-1"
-                        placeholder="Ketik nama Satpel..."
-                      />
-                      {locations.length > 1 && (
-                        <button onClick={() => hapusLokasi(loc.id)} title="Hapus Kolom Lokasi" className="text-blue-300 hover:text-red-400 absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-[#15406A] p-1 rounded-md">
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </th>
-                ))}
+        return (
+          <div key={loc.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+            <div className="bg-[#15406A] px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group">
+              <input
+                type="text"
+                value={loc.name}
+                onChange={(e) => updateNamaLokasi(loc.id, e.target.value)}
+                className="bg-transparent outline-none text-white font-black text-xl focus:bg-[#184878] rounded px-2 py-1 w-full sm:w-1/2 border border-transparent focus:border-blue-400"
+                placeholder="Ketik Nama Lokasi / Satpel..."
+              />
+              {locations.length > 1 && (
+                <button onClick={() => hapusLokasi(loc.id)} className="text-red-300 hover:text-red-100 transition-colors bg-red-900/30 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm border border-red-800/50">
+                  <Trash2 className="w-4 h-4" /> Hapus Tabel
+                </button>
+              )}
+            </div>
 
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-32">
-                  Aksi
-                </th>
-              </tr>
-              <tr>
-                {locations.map((loc) => (
-                  <Fragment key={`sub1-${loc.id}`}>
-                    <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#184878]">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead className="bg-[#184878] text-white">
+                  <tr>
+                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center w-16">
+                      NO.
+                    </th>
+                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 w-32">
+                      KODE
+                    </th>
+                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">
+                      Rincian Output (RO)
+                    </th>
+                    <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c]">
                       Target
                     </th>
-                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">
+                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#1c548c] w-28">
                       Realisasi
                     </th>
-                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">
+                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#1c548c] w-28">
                       Persen (%)
                     </th>
-                  </Fragment>
-                ))}
-              </tr>
-              <tr>
-                {locations.map((loc) => (
-                  <Fragment key={`sub2-${loc.id}`}>
-                    <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c] w-24">Paket</th>
-                    <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c] w-24">Orang</th>
-                  </Fragment>
-                ))}
-              </tr>
-            </thead>
+                    <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center w-32">
+                      Aksi
+                    </th>
+                  </tr>
+                  <tr>
+                    <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#2060a0] w-24">Paket</th>
+                    <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#2060a0] w-24">Orang</th>
+                  </tr>
+                </thead>
+                <tbody className="text-gray-700">
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-12 text-center text-gray-400 font-medium bg-white">
+                        Belum ada RO. Klik Tambah RO di bawah.
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((row, index) => {
+                      const hasSub = row.subRows.length > 0;
+                      const { paket: displayPaket, realisasi: displayRealisasi } = getDisplayData(row, loc.id);
+                      const displayOrang = hitungOrang(displayPaket);
+                      const sortedSubRows = [...row.subRows].sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
 
-            <tbody className="text-gray-700">
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={4 + locations.length * 4} className="px-4 py-12 text-center text-gray-400 font-medium bg-white">
-                    Tabel masih kosong. Klik Tambah RO Baru untuk memulai.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row, index) => {
-                  const hasSub = row.subRows.length > 0;
-                  return (
-                    <Fragment key={row.id}>
-                      <tr className={`border-b border-gray-200 transition-colors ${hasSub ? "bg-gray-100 font-semibold" : "bg-white hover:bg-slate-50"}`}>
-                        <td className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-4 py-2 text-center">{index + 1}</td>
-                        <td className="sticky left-16 z-10 bg-inherit border-r border-gray-200 p-0">
-                          <input type="text" value={row.kode} onChange={(e) => updateBarisUtamaText(row.id, "kode", e.target.value)} className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-blue-50/50" />
-                        </td>
-                        <td className="sticky left-48 z-10 bg-inherit border-r border-gray-200 p-0 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                          <input type="text" value={row.ro} onChange={(e) => updateBarisUtamaText(row.id, "ro", e.target.value)} className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-blue-50/50" />
-                        </td>
+                      return (
+                        <Fragment key={`${loc.id}-${row.id}`}>
+                          <tr className={`border-b border-gray-200 transition-colors ${hasSub ? "bg-gray-100 font-semibold" : "bg-white hover:bg-blue-50/30"}`}>
+                            <td className="border-r border-gray-200 px-4 py-2 text-center">{index + 1}</td>
+                            <td className="border-r border-gray-200 p-0">
+                              <input type="text" value={row.kode} onChange={(e) => updateBarisUtamaText(row.id, "kode", e.target.value)} className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white" />
+                            </td>
+                            <td className="border-r border-gray-200 p-0">
+                              <input type="text" value={row.ro} onChange={(e) => updateBarisUtamaText(row.id, "ro", e.target.value)} className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white" />
+                            </td>
+                            <td className="border-r border-gray-200 p-0">
+                              <input
+                                type="number"
+                                value={displayPaket === 0 ? "" : displayPaket}
+                                onChange={(e) => updateBarisUtamaData(row.id, loc.id, "paket", Number(e.target.value))}
+                                disabled={hasSub}
+                                placeholder="0"
+                                className={`w-full h-full px-4 py-3 text-center outline-none ${hasSub ? "bg-transparent cursor-not-allowed text-gray-500" : "bg-transparent focus:bg-white"}`}
+                              />
+                            </td>
+                            <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50">{displayOrang}</td>
+                            <td className="border-r border-gray-200 p-0">
+                              <input
+                                type="number"
+                                value={displayRealisasi === 0 ? "" : displayRealisasi}
+                                onChange={(e) => updateBarisUtamaData(row.id, loc.id, "realisasi", Number(e.target.value))}
+                                disabled={hasSub}
+                                placeholder="0"
+                                className={`w-full h-full px-4 py-3 text-center outline-none ${hasSub ? "bg-transparent cursor-not-allowed text-gray-500" : "bg-transparent focus:bg-white"}`}
+                              />
+                            </td>
+                            <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">{hitungPersen(displayRealisasi, displayOrang)}%</td>
+                            <td className="px-4 py-2 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => tambahSubBaris(row.id)} title="Tambah Sub-RO" className="p-1.5 bg-blue-100 text-[#15406A] rounded hover:bg-blue-200 transition-colors">
+                                  <PlusCircle className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => hapusBarisUtama(row.id)} title="Hapus RO (Semua Lokasi)" className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
 
-                        {locations.map((loc) => {
-                          const { paket, realisasi } = getDisplayData(row, loc.id);
-                          const orang = hitungOrang(paket);
-                          const persen = hitungPersen(realisasi, orang);
-
-                          return (
-                            <Fragment key={`parent-data-${loc.id}`}>
-                              <td className="border-r border-gray-200 p-0">
-                                <input
-                                  type="number"
-                                  value={paket === 0 ? "" : paket}
-                                  onChange={(e) => updateBarisUtamaData(row.id, loc.id, "paket", Number(e.target.value))}
-                                  disabled={hasSub}
-                                  placeholder="0"
-                                  className={`w-full h-full px-4 py-3 text-center outline-none ${hasSub ? "bg-transparent cursor-not-allowed text-gray-500" : "bg-transparent focus:bg-blue-50/50"}`}
-                                />
-                              </td>
-                              <td className="border-r border-gray-200 px-4 py-3 text-center bg-transparent">{orang}</td>
-                              <td className="border-r border-gray-200 p-0">
-                                <input
-                                  type="number"
-                                  value={realisasi === 0 ? "" : realisasi}
-                                  onChange={(e) => updateBarisUtamaData(row.id, loc.id, "realisasi", Number(e.target.value))}
-                                  disabled={hasSub}
-                                  placeholder="0"
-                                  className={`w-full h-full px-4 py-3 text-center outline-none ${hasSub ? "bg-transparent cursor-not-allowed text-gray-500" : "bg-transparent focus:bg-blue-50/50"}`}
-                                />
-                              </td>
-                              <td className="border-r border-gray-200 px-4 py-3 text-center bg-transparent text-[#15406A] font-bold">{persen}%</td>
-                            </Fragment>
-                          );
-                        })}
-                        <td className="px-4 py-2 text-center bg-white">
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => tambahSubBaris(row.id)} title="Tambah Sub-RO" className="p-1.5 bg-blue-100 text-[#15406A] rounded hover:bg-blue-200 transition-colors">
-                              <PlusCircle className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => hapusBarisUtama(row.id)} title="Hapus RO" className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-
-                      {row.subRows.map((sub) => (
-                        <tr key={sub.id} className="border-b border-gray-100 bg-white hover:bg-slate-50 transition-colors">
-                          <td className="sticky left-0 z-10 bg-inherit border-r border-gray-200"></td>
-                          <td className="sticky left-16 z-10 bg-inherit border-r border-gray-200 p-0 relative">
-                            <div className="absolute left-2 top-3.5 text-gray-300 pointer-events-none">
-                              <CornerDownRight className="w-4 h-4" />
-                            </div>
-                            <input type="text" value={sub.kode} onChange={(e) => updateSubBarisText(row.id, sub.id, "kode", e.target.value)} className="w-full h-full pl-8 pr-4 py-2.5 bg-transparent outline-none focus:bg-white text-sm" />
-                          </td>
-                          <td className="sticky left-48 z-10 bg-inherit border-r border-gray-200 p-0 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                            <input
-                              type="text"
-                              value={sub.ro}
-                              onChange={(e) => updateSubBarisText(row.id, sub.id, "ro", e.target.value)}
-                              className="w-full h-full px-4 py-2.5 bg-transparent outline-none focus:bg-white text-sm"
-                              placeholder="Sub-rincian..."
-                            />
-                          </td>
-                          {locations.map((loc) => {
-                            const paket = sub.data[loc.id]?.paket || 0;
-                            const realisasi = sub.data[loc.id]?.realisasi || 0;
-                            const orang = hitungOrang(paket);
-                            const persen = hitungPersen(realisasi, orang);
+                          {sortedSubRows.map((sub) => {
+                            const sp = sub.data[loc.id]?.paket || 0;
+                            const sr = sub.data[loc.id]?.realisasi || 0;
+                            const so = hitungOrang(sp);
 
                             return (
-                              <Fragment key={`sub-data-${loc.id}`}>
-                                <td className="border-r border-gray-200 p-0 border-l">
+                              <tr key={`${loc.id}-${sub.id}`} className="border-b border-gray-100 bg-white hover:bg-slate-50 transition-colors">
+                                <td className="border-r border-gray-200"></td>
+                                <td className="border-r border-gray-200 p-0 relative">
+                                  <div className="absolute left-2 top-3.5 text-gray-300 pointer-events-none">
+                                    <CornerDownRight className="w-4 h-4" />
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={sub.kode}
+                                    onChange={(e) => updateSubBarisText(row.id, sub.id, "kode", e.target.value)}
+                                    className="w-full h-full pl-8 pr-4 py-2.5 bg-transparent outline-none text-sm focus:bg-white"
+                                  />
+                                </td>
+                                <td className="border-r border-gray-200 p-0">
+                                  <input
+                                    type="text"
+                                    value={sub.ro}
+                                    onChange={(e) => updateSubBarisText(row.id, sub.id, "ro", e.target.value)}
+                                    className="w-full h-full px-4 py-2.5 bg-transparent outline-none text-sm focus:bg-white"
+                                    placeholder="Sub-rincian..."
+                                  />
+                                </td>
+                                <td className="border-r border-gray-200 p-0">
                                   <input
                                     type="number"
-                                    value={paket === 0 ? "" : paket}
+                                    value={sp === 0 ? "" : sp}
                                     onChange={(e) => updateSubBarisData(row.id, sub.id, loc.id, "paket", Number(e.target.value))}
                                     placeholder="0"
                                     className="w-full h-full px-4 py-2.5 text-center bg-transparent outline-none focus:bg-white text-sm"
                                   />
                                 </td>
-                                <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-transparent text-sm text-gray-500">{orang}</td>
+                                <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-gray-50/50 text-sm text-gray-500">{so}</td>
                                 <td className="border-r border-gray-200 p-0">
                                   <input
                                     type="number"
-                                    value={realisasi === 0 ? "" : realisasi}
+                                    value={sr === 0 ? "" : sr}
                                     onChange={(e) => updateSubBarisData(row.id, sub.id, loc.id, "realisasi", Number(e.target.value))}
                                     placeholder="0"
                                     className="w-full h-full px-4 py-2.5 text-center bg-transparent outline-none focus:bg-white text-sm"
                                   />
                                 </td>
-                                <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-transparent text-[#15406A] font-semibold text-sm">{persen}%</td>
-                              </Fragment>
+                                <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-gray-50/50 text-[#15406A] font-semibold text-sm">{hitungPersen(sr, so)}%</td>
+                                <td className="px-4 py-2 text-center">
+                                  <button onClick={() => hapusSubBaris(row.id, sub.id)} title="Hapus Sub-RO (Semua Lokasi)" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
                             );
                           })}
-                          <td className="px-4 py-2 text-center bg-white">
-                            <button onClick={() => hapusSubBaris(row.id, sub.id)} title="Hapus Sub-RO" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                        </Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+                {rows.length > 0 && (
+                  <tfoot className="bg-amber-100 text-amber-900 font-bold tracking-wide">
+                    <tr>
+                      <td colSpan={3} className="border border-amber-200 px-4 py-4 text-right uppercase">
+                        Total {loc.name}
+                      </td>
+                      <td className="border border-amber-200 px-4 py-4 text-center">{totalPaketLoc}</td>
+                      <td className="border border-amber-200 px-4 py-4 text-center">{totalOrangLoc}</td>
+                      <td className="border border-amber-200 px-4 py-4 text-center bg-amber-200/40">{totalRealisasiLoc}</td>
+                      <td className="border border-amber-200 px-4 py-4 text-center bg-amber-200/40">{hitungPersen(totalRealisasiLoc, totalOrangLoc)}%</td>
+                      <td className="border border-amber-200"></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+            <div className="bg-gray-50 p-4 border-t border-gray-200">
+              <button onClick={tambahBarisUtama} className="flex items-center gap-2 text-sm font-bold text-[#15406A] hover:text-blue-800 transition-colors">
+                <Plus className="w-5 h-5" /> Tambah RO (Teraplikasi ke semua tabel)
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* TABEL REKAPITULASI KESELURUHAN (Murni Read Only) */}
+      {rows.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-amber-300 overflow-hidden mt-12 mb-8">
+          <div className="bg-amber-500 px-6 py-4">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wide">REKAPITULASI KESELURUHAN (TOTAL SEMUA SATPEL)</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left border-collapse">
+              <thead className="bg-[#184878] text-white">
+                <tr>
+                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center w-16">
+                    NO.
+                  </th>
+                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 w-32">
+                    KODE
+                  </th>
+                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">
+                    Rincian Output (RO)
+                  </th>
+                  <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c]">
+                    Total Target Terakumulasi
+                  </th>
+                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#1c548c] w-28">
+                    Total Realisasi
+                  </th>
+                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#1c548c] w-28">
+                    Persen (%)
+                  </th>
+                </tr>
+                <tr>
+                  <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#2060a0] w-24">Paket</th>
+                  <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#2060a0] w-24">Orang</th>
+                </tr>
+              </thead>
+              <tbody className="text-gray-700">
+                {rows.map((row, index) => {
+                  const hasSub = row.subRows.length > 0;
+                  const totalPaket = locations.reduce((sum, loc) => sum + getDisplayData(row, loc.id).paket, 0);
+                  const totalRealisasi = locations.reduce((sum, loc) => sum + getDisplayData(row, loc.id).realisasi, 0);
+                  const totalOrang = hitungOrang(totalPaket);
+
+                  const sortedSubRows = [...row.subRows].sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+
+                  return (
+                    <Fragment key={`total-${row.id}`}>
+                      <tr className={`border-b border-gray-200 transition-colors ${hasSub ? "bg-amber-50/40 font-semibold" : "bg-white"}`}>
+                        <td className="border-r border-gray-200 px-4 py-3 text-center">{index + 1}</td>
+                        <td className="border-r border-gray-200 px-4 py-3">{row.kode}</td>
+                        <td className="border-r border-gray-200 px-4 py-3">{row.ro}</td>
+                        <td className="border-r border-gray-200 px-4 py-3 text-center">{totalPaket}</td>
+                        <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50">{totalOrang}</td>
+                        <td className="border-r border-gray-200 px-4 py-3 text-center">{totalRealisasi}</td>
+                        <td className="px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">{hitungPersen(totalRealisasi, totalOrang)}%</td>
+                      </tr>
+                      {sortedSubRows.map((sub) => {
+                        const sPaket = locations.reduce((sum, loc) => sum + (sub.data[loc.id]?.paket || 0), 0);
+                        const sRealisasi = locations.reduce((sum, loc) => sum + (sub.data[loc.id]?.realisasi || 0), 0);
+                        const sOrang = hitungOrang(sPaket);
+
+                        return (
+                          <tr key={`total-${sub.id}`} className="border-b border-gray-100 bg-white">
+                            <td className="border-r border-gray-200"></td>
+                            <td className="border-r border-gray-200 px-4 py-2">{sub.kode}</td>
+                            <td className="border-r border-gray-200 px-4 py-2 relative">
+                              <div className="absolute left-2 top-3 text-gray-300">
+                                <CornerDownRight className="w-4 h-4" />
+                              </div>
+                              <span className="pl-6">{sub.ro}</span>
+                            </td>
+                            <td className="border-r border-gray-200 px-4 py-2 text-center text-gray-600">{sPaket}</td>
+                            <td className="border-r border-gray-200 px-4 py-2 text-center bg-gray-50/50 text-gray-500">{sOrang}</td>
+                            <td className="border-r border-gray-200 px-4 py-2 text-center text-gray-600">{sRealisasi}</td>
+                            <td className="px-4 py-2 text-center bg-gray-50/50 text-[#15406A] font-semibold">{hitungPersen(sRealisasi, sOrang)}%</td>
+                          </tr>
+                        );
+                      })}
                     </Fragment>
                   );
-                })
-              )}
-            </tbody>
-
-            {rows.length > 0 && (
-              <tfoot className="bg-amber-400 text-white font-bold tracking-wide">
+                })}
+              </tbody>
+              <tfoot className="bg-[#15406A] text-white font-bold tracking-wide">
                 <tr>
-                  <td className="sticky left-0 z-20 bg-amber-400 border border-[#1a4e82] px-4 py-4 text-center"></td>
-                  <td className="sticky left-16 z-20 bg-amber-400 border border-[#1a4e82] px-4 py-4 text-center"></td>
-                  <td className="sticky left-48 z-20 bg-amber-400 border border-[#1a4e82] px-4 py-4 text-right shadow-[2px_0_5px_rgba(0,0,0,0.1)] uppercase">Jumlah Total</td>
-
-                  {locations.map((loc) => {
-                    const totalPaket = rows.reduce((sum, row) => sum + getDisplayData(row, loc.id).paket, 0);
-                    const totalRealisasi = rows.reduce((sum, row) => sum + getDisplayData(row, loc.id).realisasi, 0);
-                    const totalOrang = hitungOrang(totalPaket);
-                    const totalPersen = hitungPersen(totalRealisasi, totalOrang);
-
-                    return (
-                      <Fragment key={`total-${loc.id}`}>
-                        <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500">{totalPaket}</td>
-                        <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-100">{totalOrang}</td>
-                        <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-emerald-300">{totalRealisasi}</td>
-                        <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-200">{totalPersen}%</td>
-                      </Fragment>
-                    );
-                  })}
-                  <td className="border border-[#1a4e82] bg-amber-400"></td>
+                  <td colSpan={3} className="border-r border-[#1a4e82] px-4 py-4 text-right uppercase">
+                    GRAND TOTAL KESELURUHAN
+                  </td>
+                  <td className="border-r border-[#1a4e82] px-4 py-4 text-center">{rows.reduce((sum, row) => sum + locations.reduce((locSum, loc) => locSum + getDisplayData(row, loc.id).paket, 0), 0)}</td>
+                  <td className="border-r border-[#1a4e82] px-4 py-4 text-center text-blue-200">{hitungOrang(rows.reduce((sum, row) => sum + locations.reduce((locSum, loc) => locSum + getDisplayData(row, loc.id).paket, 0), 0))}</td>
+                  <td className="border-r border-[#1a4e82] px-4 py-4 text-center text-emerald-300">{rows.reduce((sum, row) => sum + locations.reduce((locSum, loc) => locSum + getDisplayData(row, loc.id).realisasi, 0), 0)}</td>
+                  <td className="px-4 py-4 text-center text-amber-300">
+                    {hitungPersen(
+                      rows.reduce((sum, row) => sum + locations.reduce((locSum, loc) => locSum + getDisplayData(row, loc.id).realisasi, 0), 0),
+                      hitungOrang(rows.reduce((sum, row) => sum + locations.reduce((locSum, loc) => locSum + getDisplayData(row, loc.id).paket, 0), 0)),
+                    )}
+                    %
+                  </td>
                 </tr>
               </tfoot>
-            )}
-          </table>
+            </table>
+          </div>
         </div>
+      )}
 
-        <div className="bg-gray-50 p-4 border-t border-gray-200">
-          <button onClick={tambahBarisUtama} className="flex items-center gap-2 text-sm font-bold text-[#15406A] hover:text-blue-800 transition-colors">
-            <Plus className="w-5 h-5" /> Tambah RO Baru
-          </button>
-        </div>
-      </div>
-
-      <div className="flex justify-end pt-4">
+      <div className="flex justify-end pt-4 pb-12">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -572,7 +641,7 @@ export default function SatpelPage() {
           className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-[#15406A]/30 transition-all disabled:opacity-70"
         >
           {isSaving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="w-5 h-5" />}
-          {isSaving ? "Menyimpan..." : "Simpan Data"}
+          {isSaving ? "Menyimpan..." : "Simpan Data Satpel"}
         </motion.button>
       </div>
     </div>

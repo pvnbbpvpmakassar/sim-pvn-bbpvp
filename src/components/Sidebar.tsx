@@ -28,10 +28,8 @@ const nonAbtSubMenuList = [
   { name: "UPTP", slug: "uptp" },
   { name: "Satpel", slug: "satpel" },
   { name: "TMT", slug: "tmt" },
-  { name: "LPKS", slug: "lpks" },
-  { name: "BLKK", slug: "blkk" },
   { name: "UPTD", slug: "uptd" },
-  { name: "PLFK", slug: "plfk" },
+  { name: "PFLK", slug: "pflk" },
   { name: "Produktivitas", slug: "produktivitas" },
 ];
 

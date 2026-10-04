@@ -8,13 +8,11 @@ import { saveAs } from "file-saver";
 
 import { getRincianOutput, getIntegrasiUPTP, simpanBulkRincianOutput } from "@/app/actions/data";
 
-type SubRow = { id: string; kode: string; ro: string; paket: number; realisasi: number; isReadOnly?: boolean };
-type Row = { id: string; kode: string; ro: string; paket: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
+type SubRow = { id: string; kode: string; ro: string; paket: number; realisasi: number; isReadOnly?: boolean; orang?: number };
+type Row = { id: string; kode: string; ro: string; paket: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean; orang?: number };
 type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
 
-// Ganti bagian atas (sebelum fungsi komponen) dengan kode ini:
-
-// Menggunakan UUID Valid yang BERBEDA dari modul ABT
+// PERBAIKAN: Gunakan ID Induk khusus NON-ABT (Berawalan 2222)
 const PARENT_UUID = "22222222-2222-2222-2222-222222222222";
 
 const initialReadOnlyRows: Row[] = [
@@ -27,8 +25,6 @@ const initialReadOnlyRows: Row[] = [
     isReadOnly: true,
     subRows: [
       { id: "22222222-2222-2222-2222-222222222223", kode: "-", ro: "TMT", paket: 0, realisasi: 0, isReadOnly: true },
-      { id: "22222222-2222-2222-2222-222222222224", kode: "-", ro: "LPKS", paket: 0, realisasi: 0, isReadOnly: true },
-      { id: "22222222-2222-2222-2222-222222222225", kode: "-", ro: "BLKK", paket: 0, realisasi: 0, isReadOnly: true },
     ],
   },
 ];
@@ -40,6 +36,7 @@ export default function UPTPPage() {
   const [modal, setModal] = useState<ModalConfig>({ isOpen: false, type: "confirm", title: "", message: "" });
   const closeModal = () => setModal((prev) => ({ ...prev, isOpen: false }));
 
+  // --- Fungsi Kalkulasi Otomatis ---
   const hitungOrang = (paket: number) => paket * 16;
   const hitungPersen = (realisasi: number, orang: number) => (orang > 0 ? ((realisasi / orang) * 100).toFixed(2) : "0.00");
 
@@ -49,50 +46,51 @@ export default function UPTPPage() {
       const resUPTP = await getRincianOutput("NON-ABT", "uptp");
       const resIntegrasi = await getIntegrasiUPTP("NON-ABT");
 
-      if (resUPTP.success && resIntegrasi.success) {
-        const manualData = (resUPTP.data as Row[]) || []; // Buat tipe data untuk struktur objek kembalian integrasi
-        type IntegrasiModuleData = {
-          kode: string;
-          paket: number;
-          realisasi: number;
+      if (resUPTP && resUPTP.success && resIntegrasi && resIntegrasi.success) {
+        type IntegrasiModuleData = { kode: string; paket: number; orang: number; realisasi: number };
+
+        const successUPTP = resUPTP as unknown as { success: true; data: Row[] };
+        const successIntegrasi = resIntegrasi as unknown as {
+          success: true;
+          data: {tmt: IntegrasiModuleData };
         };
 
-        const { blkk, lpks, tmt } = resIntegrasi.data as {
-          blkk: IntegrasiModuleData;
-          lpks: IntegrasiModuleData;
-          tmt: IntegrasiModuleData;
-        };
+        const manualData = successUPTP.data || [];
+        const { tmt } = successIntegrasi.data;
 
-        // Bikin kerangka data integrasi
-        // Di dalam blok `useEffect`
+        // PERBAIKAN: Gunakan sub-ID 2222 untuk TMT, LPKS, BLKK di NON-ABT
         const integratedRow: Row = {
           id: PARENT_UUID,
           kode: "4057.SCO.003",
           ro: "Bidang Industri dan Jasa",
           paket: 0,
+          orang: 0,
           realisasi: 0,
           isReadOnly: true,
           subRows: [
-            { id: "22222222-2222-2222-2222-222222222223", kode: tmt.kode || "-", ro: "TMT", paket: tmt.paket, realisasi: tmt.realisasi, isReadOnly: true },
-            { id: "22222222-2222-2222-2222-222222222224", kode: lpks.kode || "-", ro: "LPKS", paket: lpks.paket, realisasi: lpks.realisasi, isReadOnly: true },
-            { id: "22222222-2222-2222-2222-222222222225", kode: blkk.kode || "-", ro: "BLKK", paket: blkk.paket, realisasi: blkk.realisasi, isReadOnly: true },
+            { id: "22222222-2222-2222-2222-222222222223", kode: tmt.kode || "-", ro: "TMT", paket: tmt.paket, orang: tmt.orang || 0, realisasi: tmt.realisasi, isReadOnly: true },
+
           ],
         };
 
-        // Jika user pernah menyimpan Sub-RO manual di bawah "Bidang Industri dan Jasa", tarik datanya dan satukan
+        // Karena PARENT_UUID kini sama, data sub-RO manual (PBL, PBK, dll) akan berhasil ditarik dan digabung ke dalam satu baris
         const existingParentInDB = manualData.find((r) => r.id === PARENT_UUID);
         if (existingParentInDB) {
           const manualSubRows = existingParentInDB.subRows.filter((sub) => !sub.isReadOnly);
           integratedRow.subRows = [...integratedRow.subRows, ...manualSubRows];
         }
 
-        // Hapus baris Parent dari manual data agar tidak duplikat
         const filteredManual = manualData.filter((r) => r.id !== PARENT_UUID);
-
         setRows([integratedRow, ...filteredManual]);
       } else {
+        const errorMessage = (!resUPTP?.success ? resUPTP?.error : resIntegrasi?.error) || "Terjadi kesalahan tidak diketahui.";
         setRows(initialReadOnlyRows);
-        setModal({ isOpen: true, type: "error", title: "Gagal Memuat", message: "Gagal menarik data dari database. Menampilkan kerangka awal." });
+        setModal({
+          isOpen: true,
+          type: "error",
+          title: "Gagal Memuat Database",
+          message: `Pesan Error: ${errorMessage}`,
+        });
       }
       setIsLoading(false);
     };
@@ -140,7 +138,7 @@ export default function UPTPPage() {
       isOpen: true,
       type: "confirm",
       title: "Bersihkan Tabel?",
-      message: "Hapus semua data manual di tabel ini? (Data TMT, LPKS, BLKK tetap ada)",
+      message: "Hapus semua data manual di tabel ini? (Data TMT tetap ada)",
       onConfirm: () => {
         const resetRows = rows.filter((row) => row.isReadOnly).map((row) => ({ ...row, subRows: row.subRows.filter((sub) => sub.isReadOnly) }));
         setRows(resetRows);
@@ -155,7 +153,26 @@ export default function UPTPPage() {
 
   const simpanData = async () => {
     setIsSaving(true);
-    const result = await simpanBulkRincianOutput("NON-ABT", "uptp", rows);
+
+    const rowsToSave = rows.map((row) => {
+      const hasSub = row.subRows.length > 0;
+
+      const subRowsWithOrang = row.subRows.map((sub) => ({
+        ...sub,
+        orang: hitungOrang(sub.paket),
+      }));
+
+      const parentOrang = hasSub ? subRowsWithOrang.reduce((acc, sub) => acc + sub.orang, 0) : hitungOrang(row.paket);
+
+      return {
+        ...row,
+        orang: parentOrang,
+        subRows: subRowsWithOrang,
+      };
+    });
+
+    const result = await simpanBulkRincianOutput("NON-ABT", "uptp", rowsToSave);
+
     if (result.success) {
       setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data UPTP berhasil disimpan ke Database!" });
     } else {
@@ -168,6 +185,7 @@ export default function UPTPPage() {
     if (rows.length === 0) return setModal({ isOpen: true, type: "error", title: "Gagal Mengunduh", message: "Tabel masih kosong." });
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("UPTP");
+
     worksheet.columns = [
       { header: "NO.", key: "no", width: 8 },
       { header: "KODE", key: "kode", width: 15 },
@@ -177,6 +195,7 @@ export default function UPTPPage() {
       { header: "REALISASI", key: "realisasi", width: 18 },
       { header: "PERSEN (%)", key: "persen", width: 15 },
     ];
+
     const applyBorder = (row: ExcelJS.Row) => {
       row.eachCell({ includeEmpty: true }, (cell) => {
         cell.border = {
@@ -190,33 +209,35 @@ export default function UPTPPage() {
       const roCell = row.getCell(3);
       if (roCell) roCell.alignment = { vertical: "middle", horizontal: "left" };
     };
+
     const headerRow = worksheet.getRow(1);
     headerRow.eachCell((cell) => {
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF15406A" } };
       cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
       cell.alignment = { vertical: "middle", horizontal: "center" };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFFFFFFF" } },
-        left: { style: "thin", color: { argb: "FFFFFFFF" } },
-        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
-        right: { style: "thin", color: { argb: "FFFFFFFF" } },
-      };
     });
+
     rows.forEach((row, index) => {
       const hasSub = row.subRows.length > 0;
       const paket = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket;
+      const orang = hitungOrang(paket);
       const realisasi = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi;
-      const parentRow = worksheet.addRow({ no: index + 1, kode: row.kode, ro: row.ro, paket, orang: hitungOrang(paket), realisasi, persen: `${hitungPersen(realisasi, hitungOrang(paket))}%` });
+
+      const parentRow = worksheet.addRow({ no: index + 1, kode: row.kode, ro: row.ro, paket, orang, realisasi, persen: `${hitungPersen(realisasi, orang)}%` });
       applyBorder(parentRow);
       if (hasSub) {
         parentRow.font = { bold: true };
         parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } };
       }
-      row.subRows.forEach((sub) => {
+
+      const sortedSubRows = [...row.subRows].sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+
+      sortedSubRows.forEach((sub) => {
         const subRow = worksheet.addRow({ no: "", kode: sub.kode, ro: `    ↳ ${sub.ro}`, paket: sub.paket, orang: hitungOrang(sub.paket), realisasi: sub.realisasi, persen: `${hitungPersen(sub.realisasi, hitungOrang(sub.paket))}%` });
         applyBorder(subRow);
       });
     });
+
     const totalRow = worksheet.addRow({ no: "", kode: "", ro: "JUMLAH TOTAL", paket: totalPaket, orang: totalOrang, realisasi: totalRealisasi, persen: `${totalPersen}%` });
     totalRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } };
@@ -227,17 +248,17 @@ export default function UPTPPage() {
         bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
         right: { style: "thin", color: { argb: "FFFFFFFF" } },
       };
-      if (colNumber === 3) cell.alignment = { vertical: "middle", horizontal: "right" };
-      else cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.alignment = { vertical: "middle", horizontal: colNumber === 3 ? "right" : "center" };
     });
     worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
+
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), "Data_UPTP.xlsx");
+    saveAs(new Blob([buffer]), "Data_UPTP_NON-ABT.xlsx");
   };
 
   const totalPaket = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket || 0), 0);
-  const totalRealisasi = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi || 0), 0);
   const totalOrang = hitungOrang(totalPaket);
+  const totalRealisasi = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi || 0), 0);
   const totalPersen = hitungPersen(totalRealisasi, totalOrang);
 
   if (isLoading)
@@ -250,9 +271,7 @@ export default function UPTPPage() {
           <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-
         <p className="text-sm font-semibold text-[#15406A]">Memuat data UPTP</p>
-
         <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
@@ -309,7 +328,7 @@ export default function UPTPPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
         <p className="text-amber-800 text-sm font-medium leading-relaxed">
-          <span className="font-bold">Informasi:</span> Data TMT, LPKS, dan BLKK dikunci karena otomatis terintegrasi. Anda tetap bisa menambah Sub-RO manual ke dalamnya.
+          <span className="font-bold">Informasi:</span> Data TMT dikunci karena otomatis terintegrasi. Anda tetap bisa menambah Sub-RO manual ke dalamnya.
         </p>
       </div>
 
@@ -354,10 +373,14 @@ export default function UPTPPage() {
               {rows.map((row, index) => {
                 const hasSub = row.subRows.length > 0;
                 const displayPaket = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.paket || 0), 0) : row.paket;
-                const displayRealisasi = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.realisasi || 0), 0) : row.realisasi;
                 const displayOrang = hitungOrang(displayPaket);
+                const displayRealisasi = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.realisasi || 0), 0) : row.realisasi;
                 const displayPersen = hitungPersen(displayRealisasi, displayOrang);
                 const isParentLocked = row.isReadOnly || hasSub;
+
+                const sortedSubRows = [...row.subRows].sort((a, b) => {
+                  return a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" });
+                });
 
                 return (
                   <Fragment key={row.id}>
@@ -405,7 +428,6 @@ export default function UPTPPage() {
                       <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">{displayPersen}%</td>
                       <td className="px-4 py-2 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {/* Tombol Tambah DIBIARKAN AKTIF untuk SEMUA BARIS */}
                           <button onClick={() => tambahSubBaris(row.id)} title="Tambah Sub-RO" className="p-1.5 bg-blue-100 text-[#15406A] rounded hover:bg-blue-200 transition-colors">
                             <PlusCircle className="w-4 h-4" />
                           </button>
@@ -422,7 +444,7 @@ export default function UPTPPage() {
                       </td>
                     </tr>
 
-                    {row.subRows.map((sub) => {
+                    {sortedSubRows.map((sub) => {
                       const subOrang = hitungOrang(sub.paket);
                       const subPersen = hitungPersen(sub.realisasi, subOrang);
                       const isSubLocked = sub.isReadOnly;
@@ -515,7 +537,7 @@ export default function UPTPPage() {
         </div>
       </div>
       <div className="flex justify-end pt-4">
-        <motion.button onClick={simpanData} disabled={isSaving} className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-[#15406A]/30 transition-all disabled:opacity-70">
+        <motion.button onClick={simpanData} disabled={isSaving} className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold shadow-lg transition-all disabled:opacity-70">
           {isSaving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="w-5 h-5" />}
           {isSaving ? "Menyimpan..." : "Simpan Data"}
         </motion.button>

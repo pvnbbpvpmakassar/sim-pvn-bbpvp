@@ -12,26 +12,22 @@ type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; tit
 export default function AlokasiAnggaranPage() {
   const [rowsABT, setRowsABT] = useState<AlokasiRowData[]>([]);
   const [rowsNONABT, setRowsNONABT] = useState<AlokasiRowData[]>([]);
+  const [rowsLainnya, setRowsLainnya] = useState<AlokasiRowData[]>([]); // TAMBAHAN: State Anggaran Lainnya
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [modal, setModal] = useState<ModalConfig>({ isOpen: false, type: "confirm", title: "", message: "" });
 
   const closeModal = () => setModal({ ...modal, isOpen: false });
   
-  // Fungsi format Rupiah untuk bagian Total (menggunakan Rp.)
   const formatRp = (value: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(value);
-  
-  // Fungsi format pemisah ribuan untuk Input (hanya angka dan titik)
   const formatInputAngka = (value: number) => value === 0 ? "" : new Intl.NumberFormat("id-ID").format(value);
 
-  // Fungsi Kalkulasi Persen yang kebal terhadap NaN
   const hitungPersen = (realisasi: number, anggaran: number) => {
     const real = Number(realisasi) || 0;
     const angg = Number(anggaran) || 0;
     return angg > 0 ? ((real / angg) * 100).toFixed(2) : "0.00";
   };
 
-  // --- Tarik Data Saat Render Pertama ---
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -40,6 +36,7 @@ export default function AlokasiAnggaranPage() {
       if (res.success && res.data) {
         setRowsABT(res.data.abt);
         setRowsNONABT(res.data.nonAbt);
+        setRowsLainnya(res.data.lainnya || []); // Load data LAINNYA
       } else {
         setModal({ isOpen: true, type: "error", title: "Gagal Memuat", message: res.error || "Gagal menarik data dari database." });
       }
@@ -48,40 +45,43 @@ export default function AlokasiAnggaranPage() {
     fetchData();
   }, []);
 
-  // --- Fungsi Khusus Menangani Input Anggaran/Realisasi (Konversi String ke Number) ---
-  const handleAngkaChange = (valStr: string, id: string, field: "anggaran" | "realisasi", isABT: boolean) => {
-    // Buang semua karakter yang bukan angka
+  const handleAngkaChange = (valStr: string, id: string, field: "anggaran" | "realisasi", kategori: "ABT" | "NON-ABT" | "LAINNYA") => {
     const rawValue = valStr.replace(/[^0-9]/g, "");
-    // Ubah ke integer, jika kosong jadikan 0
     const numValue = rawValue ? parseInt(rawValue, 10) : 0;
     
-    if (isABT) {
+    if (kategori === "ABT") {
       setRowsABT(rowsABT.map(r => r.id === id ? { ...r, [field]: numValue } : r));
-    } else {
+    } else if (kategori === "NON-ABT") {
       setRowsNONABT(rowsNONABT.map(r => r.id === id ? { ...r, [field]: numValue } : r));
+    } else {
+      setRowsLainnya(rowsLainnya.map(r => r.id === id ? { ...r, [field]: numValue } : r));
     }
   };
 
-  // --- Manipulasi ABT ---
+  // --- Manipulasi State Tabel ---
   const tambahABT = () => setRowsABT([...rowsABT, { id: crypto.randomUUID(), nama_modul: "", anggaran: 0, realisasi: 0 }]);
   const hapusABT = (id: string) => setModal({ isOpen: true, type: "confirm", title: "Hapus Baris?", message: "Hapus alokasi ini?", onConfirm: () => { setRowsABT(rowsABT.filter(r => r.id !== id)); closeModal(); } });
   const updateTextABT = (id: string, value: string) => setRowsABT(rowsABT.map(r => r.id === id ? { ...r, nama_modul: value } : r));
 
-  // --- Manipulasi NON-ABT ---
   const tambahNONABT = () => setRowsNONABT([...rowsNONABT, { id: crypto.randomUUID(), nama_modul: "", anggaran: 0, realisasi: 0 }]);
   const hapusNONABT = (id: string) => setModal({ isOpen: true, type: "confirm", title: "Hapus Baris?", message: "Hapus alokasi ini?", onConfirm: () => { setRowsNONABT(rowsNONABT.filter(r => r.id !== id)); closeModal(); } });
   const updateTextNONABT = (id: string, value: string) => setRowsNONABT(rowsNONABT.map(r => r.id === id ? { ...r, nama_modul: value } : r));
 
+  const tambahLainnya = () => setRowsLainnya([...rowsLainnya, { id: crypto.randomUUID(), nama_modul: "", anggaran: 0, realisasi: 0 }]);
+  const hapusLainnya = (id: string) => setModal({ isOpen: true, type: "confirm", title: "Hapus Baris?", message: "Hapus anggaran ini?", onConfirm: () => { setRowsLainnya(rowsLainnya.filter(r => r.id !== id)); closeModal(); } });
+  const updateTextLainnya = (id: string, value: string) => setRowsLainnya(rowsLainnya.map(r => r.id === id ? { ...r, nama_modul: value } : r));
+
   const bersihkanTabel = () => {
     setModal({
-      isOpen: true, type: "confirm", title: "Bersihkan Semua Tabel?", message: "Hapus semua data di tabel ABT dan NON-ABT pada layar ini?",
-      onConfirm: () => { setRowsABT([]); setRowsNONABT([]); closeModal(); }
+      isOpen: true, type: "confirm", title: "Bersihkan Semua Tabel?", message: "Hapus semua data di seluruh tabel pada layar ini?",
+      onConfirm: () => { setRowsABT([]); setRowsNONABT([]); setRowsLainnya([]); closeModal(); }
     });
   };
 
   const simpanData = async () => {
     setIsSaving(true);
-    const result = await simpanBulkAlokasiAnggaran(rowsABT, rowsNONABT);
+    // Simpan ketiga array ke database
+    const result = await simpanBulkAlokasiAnggaran(rowsABT, rowsNONABT, rowsLainnya);
     
     if (result.success) {
       setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Alokasi Anggaran berhasil disimpan ke Database!" });
@@ -91,15 +91,8 @@ export default function AlokasiAnggaranPage() {
     setIsSaving(false);
   };
 
-  // --- Komponen Render Tabel ---
-  const renderTable = (
-    title: string, 
-    rows: AlokasiRowData[], 
-    tambahFn: () => void, 
-    hapusFn: (id: string) => void, 
-    updateTextFn: (id: string, value: string) => void,
-    isABT: boolean
-  ) => {
+  // --- Komponen Render Tabel Utama (ABT & NON-ABT) ---
+  const renderTable = (title: string, rows: AlokasiRowData[], tambahFn: () => void, hapusFn: (id: string) => void, updateTextFn: (id: string, value: string) => void, kategori: "ABT" | "NON-ABT") => {
     const totalAnggaran = rows.reduce((sum, r) => sum + r.anggaran, 0);
     const totalRealisasi = rows.reduce((sum, r) => sum + r.realisasi, 0);
 
@@ -142,7 +135,7 @@ export default function AlokasiAnggaranPage() {
                         <input 
                           type="text" 
                           value={formatInputAngka(row.anggaran)} 
-                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "anggaran", isABT)} 
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "anggaran", kategori)} 
                           className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700" 
                           placeholder="0" 
                         />
@@ -154,7 +147,7 @@ export default function AlokasiAnggaranPage() {
                         <input 
                           type="text" 
                           value={formatInputAngka(row.realisasi)} 
-                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi", isABT)} 
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi", kategori)} 
                           className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700" 
                           placeholder="0" 
                         />
@@ -192,6 +185,80 @@ export default function AlokasiAnggaranPage() {
     );
   };
 
+  // --- Komponen Render Tabel Anggaran Lainnya (Tanpa Realisasi) ---
+  const renderTableLainnya = () => {
+    const totalAnggaran = rowsLainnya.reduce((sum, r) => sum + r.anggaran, 0);
+
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+        <div className="bg-emerald-700 px-6 py-4 flex justify-between items-center">
+          <h2 className="text-lg font-bold text-white uppercase tracking-wide">ANGGARAN LAINNYA</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left border-collapse">
+            <thead className="bg-emerald-800 text-white">
+              <tr>
+                <th className="border border-emerald-900 px-4 py-3 text-center w-16">NO.</th>
+                <th className="border border-emerald-900 px-4 py-3 min-w-[250px]">Keterangan (Nama Alokasi)</th>
+                <th className="border border-emerald-900 px-4 py-3 text-center w-64">Jumlah Anggaran (Rp.)</th>
+                <th className="border border-emerald-900 px-4 py-3 text-center w-24">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="text-gray-700">
+              {rowsLainnya.length === 0 ? (
+                <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Tabel Anggaran Lainnya kosong. Klik Tambah untuk memulai.</td></tr>
+              ) : (
+                rowsLainnya.map((row, index) => (
+                  <tr key={row.id} className="border-b border-gray-200 hover:bg-emerald-50/30 transition-colors">
+                    <td className="border-r border-gray-200 px-4 py-2 text-center font-semibold">{index + 1}</td>
+                    <td className="border-r border-gray-200 p-0">
+                      <input 
+                        type="text" 
+                        value={row.nama_modul} 
+                        onChange={(e) => updateTextLainnya(row.id, e.target.value)} 
+                        className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white font-medium text-emerald-800" 
+                        placeholder="Contoh: Biaya Operasional Tambahan" 
+                      />
+                    </td>
+                    <td className="border-r border-gray-200 p-0">
+                      <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
+                        <span className="pl-4 py-3 text-gray-400 font-medium">Rp</span>
+                        <input 
+                          type="text" 
+                          value={formatInputAngka(row.anggaran)} 
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "anggaran", "LAINNYA")} 
+                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700" 
+                          placeholder="0" 
+                        />
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      <button onClick={() => hapusLainnya(row.id)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {rowsLainnya.length > 0 && (
+              <tfoot className="bg-amber-400 text-white font-bold tracking-wide">
+                <tr>
+                  <td colSpan={2} className="border border-amber-500 px-4 py-4 text-right uppercase">Total Anggaran Lainnya</td>
+                  <td className="border border-amber-500 px-4 py-4 text-right bg-amber-500 text-[15px]">{formatRp(totalAnggaran)}</td>
+                  <td className="border border-amber-500 bg-amber-400"></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        <div className="bg-gray-50 p-4 border-t border-gray-200">
+          <button onClick={tambahLainnya} className="flex items-center gap-2 text-sm font-bold text-emerald-700 hover:text-emerald-900 transition-colors">
+            <Plus className="w-5 h-5" /> Tambah Anggaran Lainnya
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center">
@@ -202,9 +269,7 @@ export default function AlokasiAnggaranPage() {
           <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-
-        <p className="text-sm font-semibold text-[#15406A]">Memuat data LPKS</p>
-
+        <p className="text-sm font-semibold text-[#15406A]">Memuat Data Alokasi Anggaran</p>
         <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
@@ -241,16 +306,18 @@ export default function AlokasiAnggaranPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#15406A]">Alokasi Anggaran</h1>
-          <p className="text-gray-500 text-sm mt-1">Kelola distribusi anggaran utama untuk setiap modul secara garis besar.</p>
+          <p className="text-gray-500 text-sm mt-1">Kelola distribusi anggaran utama untuk setiap modul dan pengeluaran lainnya.</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg font-medium border border-emerald-200 transition-colors hover:bg-emerald-100"><Download className="w-4 h-4" /> Excel</button>
           <button onClick={bersihkanTabel} className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-lg font-medium border border-red-200 transition-colors hover:bg-red-100"><RefreshCw className="w-4 h-4" /> Bersihkan</button>
         </div>
       </div>
 
-      {renderTable("ABT", rowsABT, tambahABT, hapusABT, updateTextABT, true)}
-      {renderTable("NON-ABT", rowsNONABT, tambahNONABT, hapusNONABT, updateTextNONABT, false)}
+      {renderTable("ABT", rowsABT, tambahABT, hapusABT, updateTextABT, "ABT")}
+      {renderTable("NON-ABT", rowsNONABT, tambahNONABT, hapusNONABT, updateTextNONABT, "NON-ABT")}
+      
+      {/* Tampilan Tabel Anggaran Lainnya */}
+      {renderTableLainnya()}
 
       <div className="flex justify-end pt-4 pb-12">
         <motion.button onClick={simpanData} disabled={isSaving} className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold shadow-lg transition-all disabled:opacity-70">

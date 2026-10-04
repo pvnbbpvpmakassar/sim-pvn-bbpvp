@@ -62,7 +62,7 @@ export default function DashboardPage() {
             <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
           </div>
 
-          <p className="text-sm font-semibold text-[#15406A]">Memuat data LPKS</p>
+          <p className="text-sm font-semibold text-[#15406A]">Memuat data Tabel Rekapan</p>
 
           <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
         </div>  

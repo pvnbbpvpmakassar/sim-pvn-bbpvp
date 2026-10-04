@@ -6,15 +6,15 @@ import { Save, Download, Trash2, Plus, PlusCircle, AlertCircle, RefreshCw, Corne
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-// Impor fungsi database
-import { getRincianOutput, simpanBulkRincianOutput } from "@/app/actions/data";
+// Impor fungsi database dan tipe datanya yang tegas
+import { getRincianOutput, simpanBulkRincianOutput, RowData } from "@/app/actions/data";
 
-// 1. PERBAIKAN TIPE DATA: Tambahkan 'orang' yang bersifat opsional untuk sinkronisasi state ke database
-type SubRow = { id: string; kode: string; ro: string; paket: number; orang?: number; realisasi: number; isReadOnly?: boolean };
-type Row = { id: string; kode: string; ro: string; paket: number; orang?: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
+// PERBAIKAN TIPE DATA: Jadikan 'orang' mandatory (wajib) agar sama persis dengan RowData di backend
+type SubRow = { id: string; kode: string; ro: string; paket: number; orang: number; realisasi: number; isReadOnly?: boolean };
+type Row = { id: string; kode: string; ro: string; paket: number; orang: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
 type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
 
-export default function BlkkKompetensiPage() {
+export default function PflkKompetensiPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -22,16 +22,28 @@ export default function BlkkKompetensiPage() {
   const [modal, setModal] = useState<ModalConfig>({ isOpen: false, type: "confirm", title: "", message: "" });
   const closeModal = () => setModal((prev) => ({ ...prev, isOpen: false }));
 
-  // Fungsi Kalkulasi Otomatis
-  const hitungOrang = (paket: number) => paket * 16;
+  // Fungsi Kalkulasi Persentase
   const hitungPersen = (realisasi: number, orang: number) => (orang > 0 ? ((realisasi / orang) * 100).toFixed(2) : "0.00");
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const response = await getRincianOutput("NON-ABT", "blkk");
+      const response = await getRincianOutput("NON-ABT", "pflk");
+      
       if (response.success && response.data) {
-        setRows(response.data as Row[]);
+        // PERBAIKAN: Gunakan RowData[] dari backend untuk casting yang aman tanpa any
+        const rawData = response.data as RowData[];
+        
+        const mappedData: Row[] = rawData.map((row) => ({
+          ...row,
+          orang: row.orang || 0,
+          subRows: row.subRows.map((sub) => ({
+             ...sub,
+             orang: sub.orang || 0,
+             paket: 0
+          }))
+        }));
+        setRows(mappedData);
       } else {
         setModal({ isOpen: true, type: "error", title: "Gagal Memuat", message: "Gagal mengambil data dari database." });
       }
@@ -83,33 +95,34 @@ export default function BlkkKompetensiPage() {
   const updateSubBaris = (parentId: string, subId: string, field: keyof SubRow, value: string | number) =>
     setRows(rows.map((row) => (row.id === parentId ? { ...row, subRows: row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub)) } : row)));
 
-  // --- 2. PERBAIKAN FUNGSI SIMPAN: Pencegatan data untuk menyisipkan kalkulasi 'orang' ---
   const simpanData = async () => {
     setIsSaving(true);
 
-    const rowsToSave = rows.map((row) => {
+    // PERBAIKAN: Petakan menjadi RowData[] yang valid
+    const rowsToSave: RowData[] = rows.map((row) => {
       const hasSub = row.subRows.length > 0;
       
-      const subRowsWithOrang = row.subRows.map(sub => ({
+      const subRowsWithOrang = row.subRows.map((sub) => ({
         ...sub,
-        orang: hitungOrang(sub.paket)
+        paket: 0
       }));
 
       const parentOrang = hasSub 
         ? subRowsWithOrang.reduce((acc, sub) => acc + (sub.orang || 0), 0)
-        : hitungOrang(row.paket);
+        : (row.orang || 0);
 
       return {
         ...row,
+        paket: 0,
         orang: parentOrang,
         subRows: subRowsWithOrang
       };
     });
 
-    const result = await simpanBulkRincianOutput("NON-ABT", "blkk", rowsToSave);
+    const result = await simpanBulkRincianOutput("NON-ABT", "pflk", rowsToSave);
 
     if (result.success) {
-      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data BLKK berhasil disimpan ke Database!" });
+      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data PFLK berhasil disimpan ke Database!" });
     } else {
       setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan saat menyimpan ke database: ${result.error}` });
     }
@@ -123,13 +136,12 @@ export default function BlkkKompetensiPage() {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("BLKK");
+    const worksheet = workbook.addWorksheet("PFLK");
 
     worksheet.columns = [
       { header: "NO.", key: "no", width: 8 },
       { header: "KODE", key: "kode", width: 15 },
       { header: "RINCIAN OUTPUT (RO)", key: "ro", width: 45 },
-      { header: "TARGET PAKET", key: "paket", width: 18 },
       { header: "TARGET ORANG", key: "orang", width: 18 },
       { header: "REALISASI", key: "realisasi", width: 18 },
       { header: "PERSEN (%)", key: "persen", width: 15 },
@@ -164,16 +176,14 @@ export default function BlkkKompetensiPage() {
 
     rows.forEach((row, index) => {
       const hasSub = row.subRows.length > 0;
-      const paket = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket;
+      const orang = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.orang || 0), 0) : row.orang;
       const realisasi = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi;
-      const orang = hitungOrang(paket);
       const persen = hitungPersen(realisasi, orang);
 
       const parentRow = worksheet.addRow({
         no: index + 1,
         kode: row.kode,
         ro: row.ro,
-        paket: paket,
         orang: orang,
         realisasi: realisasi,
         persen: `${persen}%`,
@@ -185,20 +195,18 @@ export default function BlkkKompetensiPage() {
         parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } };
       }
 
-      // PERBAIKAN EXCEL: Urutkan Sub-RO di hasil unduhan juga
+      // PERBAIKAN EXCEL: Urutkan Sub-RO di hasil unduhan
       const sortedSubRows = [...row.subRows].sort((a, b) => {
         return a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: 'base' });
       });
 
       sortedSubRows.forEach((sub) => {
-        const subOrang = hitungOrang(sub.paket);
-        const subPersen = hitungPersen(sub.realisasi, subOrang);
+        const subPersen = hitungPersen(sub.realisasi, sub.orang);
         const subRow = worksheet.addRow({
           no: "",
           kode: sub.kode,
           ro: `    ↳ ${sub.ro}`,
-          paket: sub.paket,
-          orang: subOrang,
+          orang: sub.orang,
           realisasi: sub.realisasi,
           persen: `${subPersen}%`,
         });
@@ -210,7 +218,6 @@ export default function BlkkKompetensiPage() {
       no: "",
       kode: "",
       ro: "JUMLAH TOTAL",
-      paket: totalPaket,
       orang: totalOrang,
       realisasi: totalRealisasi,
       persen: `${totalPersen}%`,
@@ -236,12 +243,11 @@ export default function BlkkKompetensiPage() {
     worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), "Data_BLKK_Kompetensi.xlsx");
+    saveAs(new Blob([buffer]), "Data_PFLK_Kompetensi.xlsx");
   };
 
-  const totalPaket = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket || 0), 0);
+  const totalOrang = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.orang || 0), 0) : row.orang || 0), 0);
   const totalRealisasi = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi || 0), 0);
-  const totalOrang = hitungOrang(totalPaket);
   const totalPersen = hitungPersen(totalRealisasi, totalOrang);
 
   if (isLoading) {
@@ -254,7 +260,7 @@ export default function BlkkKompetensiPage() {
           <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-        <p className="text-sm font-semibold text-[#15406A]">Memuat data BLKK</p>
+        <p className="text-sm font-semibold text-[#15406A]">Memuat data PFLK</p>
         <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
@@ -298,8 +304,8 @@ export default function BlkkKompetensiPage() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#15406A]">BLKK (NON-ABT)</h1>
-          <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi output BLKK</p>
+          <h1 className="text-2xl font-bold text-[#15406A]">PFLK (NON-ABT)</h1>
+          <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi output PFLK</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={handleDownloadExcel} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg font-medium transition-colors border border-emerald-200">
@@ -323,38 +329,33 @@ export default function BlkkKompetensiPage() {
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-[#15406A] text-white">
               <tr>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-16">NO.</th>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 w-32">Kode</th>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">Rincian Output (RO)</th>
-                <th colSpan={4} className="border border-[#1a4e82] px-4 py-2 text-center">NON-ABT</th>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-32">Aksi</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center w-16">NO.</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 w-32">Kode</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">Rincian Output (RO)</th>
+                <th colSpan={3} className="border border-[#1a4e82] px-4 py-2 text-center">NON-ABT</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center w-32">Aksi</th>
               </tr>
               <tr>
-                <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#184878]">Target</th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">Realisasi</th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">Persen (%)</th>
-              </tr>
-              <tr>
-                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c] w-24">Paket</th>
-                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c] w-24">Orang</th>
+                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#184878]">Target Orang</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">Realisasi</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">Persen (%)</th>
               </tr>
             </thead>
             <tbody className="text-gray-700">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400 font-medium">
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400 font-medium">
                     Tabel masih kosong. Klik Tambah RO untuk memulai.
                   </td>
                 </tr>
               ) : (
                 rows.map((row, index) => {
                   const hasSub = row.subRows.length > 0;
-                  const displayPaket = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.paket || 0), 0) : row.paket;
+                  const displayOrang = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.orang || 0), 0) : row.orang;
                   const displayRealisasi = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.realisasi || 0), 0) : row.realisasi;
-                  const displayOrang = hitungOrang(displayPaket);
                   const displayPersen = hitungPersen(displayRealisasi, displayOrang);
 
-                  // 3. PERBAIKAN SORTING: Mengurutkan Sub-RO secara Alphanumeric berdasarkan Kode
+                  // PERBAIKAN SORTING: Mengurutkan Sub-RO secara Alphanumeric berdasarkan Kode
                   const sortedSubRows = [...row.subRows].sort((a, b) => {
                     return a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: 'base' });
                   });
@@ -372,14 +373,13 @@ export default function BlkkKompetensiPage() {
                         <td className="border-r border-gray-200 p-0">
                           <input
                             type="number"
-                            value={displayPaket === 0 ? "" : displayPaket}
-                            onChange={(e) => updateBarisUtama(row.id, "paket", Number(e.target.value))}
+                            value={displayOrang === 0 ? "" : displayOrang}
+                            onChange={(e) => updateBarisUtama(row.id, "orang", Number(e.target.value))}
                             disabled={hasSub}
                             placeholder="0"
                             className={`w-full h-full px-4 py-3 text-center outline-none ${hasSub ? "bg-gray-100 cursor-not-allowed" : "bg-transparent focus:bg-blue-50/50"}`}
                           />
                         </td>
-                        <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50">{displayOrang}</td>
                         <td className="border-r border-gray-200 p-0">
                           <input
                             type="number"
@@ -404,8 +404,7 @@ export default function BlkkKompetensiPage() {
                       </tr>
 
                       {sortedSubRows.map((sub) => {
-                        const subOrang = hitungOrang(sub.paket);
-                        const subPersen = hitungPersen(sub.realisasi, subOrang);
+                        const subPersen = hitungPersen(sub.realisasi, sub.orang);
                         return (
                           <tr key={sub.id} className="border-b border-gray-100 hover:bg-blue-50/30">
                             <td className="border-r border-gray-200 bg-gray-50"></td>
@@ -427,13 +426,12 @@ export default function BlkkKompetensiPage() {
                             <td className="border-r border-gray-200 p-0">
                               <input
                                 type="number"
-                                value={sub.paket === 0 ? "" : sub.paket}
-                                onChange={(e) => updateSubBaris(row.id, sub.id, "paket", Number(e.target.value))}
+                                value={sub.orang === 0 ? "" : sub.orang}
+                                onChange={(e) => updateSubBaris(row.id, sub.id, "orang", Number(e.target.value))}
                                 placeholder="0"
                                 className="w-full h-full px-4 py-2.5 text-center bg-transparent outline-none focus:bg-white text-sm"
                               />
                             </td>
-                            <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-gray-50/50 text-sm text-gray-500">{subOrang}</td>
                             <td className="border-r border-gray-200 p-0">
                               <input
                                 type="number"
@@ -463,8 +461,7 @@ export default function BlkkKompetensiPage() {
                   <td colSpan={3} className="border border-[#1a4e82] px-4 py-4 text-right uppercase">
                     Jumlah Total
                   </td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500">{totalPaket}</td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-100">{totalOrang}</td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500">{totalOrang}</td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-emerald-300">{totalRealisasi}</td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-200">{totalPersen}%</td>
                   <td className="border border-[#1a4e82] bg-amber-400"></td>

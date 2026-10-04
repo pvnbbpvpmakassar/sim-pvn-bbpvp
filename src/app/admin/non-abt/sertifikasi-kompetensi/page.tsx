@@ -2,17 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Save, Download, Trash2, Plus, PlusCircle, AlertCircle, RefreshCw, CornerDownRight, X, CheckCircle } from "lucide-react";
+import { Save, Download, Trash2, Plus, PlusCircle, AlertCircle, RefreshCw, CornerDownRight, CheckCircle } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-// Impor fungsi database
 import { getRincianOutput, simpanBulkRincianOutput } from "@/app/actions/data";
 
-type SubRow = { id: string; kode: string; ro: string; paket: number; realisasi: number; isReadOnly?: boolean };
-type Row = { id: string; kode: string; ro: string; paket: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
+type SubRow = { id: string; kode: string; ro: string; paket: number; orang: number; realisasi: number; isReadOnly?: boolean };
+type Row = { id: string; kode: string; ro: string; paket: number; orang: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
 type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
-type ExcelRow = { NO: number | string; KODE: string; "RINCIAN OUTPUT (RO)": string; "TARGET PAKET": number; "TARGET ORANG": number; REALISASI: number; "PERSEN (%)": string };
 
 export default function SertifikasiKompetensiPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -22,10 +20,8 @@ export default function SertifikasiKompetensiPage() {
   const [modal, setModal] = useState<ModalConfig>({ isOpen: false, type: "confirm", title: "", message: "" });
   const closeModal = () => setModal((prev) => ({ ...prev, isOpen: false }));
 
-  const hitungOrang = (paket: number) => paket * 16;
   const hitungPersen = (realisasi: number, orang: number) => (orang > 0 ? ((realisasi / orang) * 100).toFixed(2) : "0.00");
 
-  // --- Memuat Data dari Database saat Render Pertama ---
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -40,10 +36,11 @@ export default function SertifikasiKompetensiPage() {
     fetchData();
   }, []);
 
-  const tambahBarisUtama = () => setRows([...rows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0, subRows: [] }]);
+  const tambahBarisUtama = () => setRows([...rows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, orang: 0, realisasi: 0, subRows: [] }]);
   const tambahSubBaris = (parentId: string) => {
-    setRows(rows.map((row) => (row.id === parentId ? { ...row, paket: 0, realisasi: 0, subRows: [...row.subRows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0 }] } : row)));
+    setRows(rows.map((row) => (row.id === parentId ? { ...row, paket: 0, orang: 0, realisasi: 0, subRows: [...row.subRows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, orang: 0, realisasi: 0 }] } : row)));
   };
+
   const hapusBarisUtama = (id: string) =>
     setModal({
       isOpen: true,
@@ -55,6 +52,7 @@ export default function SertifikasiKompetensiPage() {
         closeModal();
       },
     });
+
   const hapusSubBaris = (parentId: string, subId: string) =>
     setModal({
       isOpen: true,
@@ -66,6 +64,7 @@ export default function SertifikasiKompetensiPage() {
         closeModal();
       },
     });
+
   const bersihkanTabel = () => {
     if (rows.length === 0) return;
     setModal({
@@ -79,11 +78,11 @@ export default function SertifikasiKompetensiPage() {
       },
     });
   };
+
   const updateBarisUtama = (id: string, field: keyof Row, value: string | number) => setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   const updateSubBaris = (parentId: string, subId: string, field: keyof SubRow, value: string | number) =>
     setRows(rows.map((row) => (row.id === parentId ? { ...row, subRows: row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub)) } : row)));
 
-// --- Fungsi Download Excel Berwarna ---
   const handleDownloadExcel = async () => {
     if (rows.length === 0) {
       setModal({ isOpen: true, type: "error", title: "Gagal", message: "Tabel kosong." });
@@ -93,7 +92,6 @@ export default function SertifikasiKompetensiPage() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Sertifikasi");
 
-    // 1. Definisikan Kolom dan Lebarnya
     worksheet.columns = [
       { header: "NO.", key: "no", width: 8 },
       { header: "KODE", key: "kode", width: 15 },
@@ -104,7 +102,6 @@ export default function SertifikasiKompetensiPage() {
       { header: "PERSEN (%)", key: "persen", width: 15 },
     ];
 
-    // Fungsi bantuan untuk menerapkan border ke sebuah baris
     const applyBorder = (row: ExcelJS.Row) => {
       row.eachCell({ includeEmpty: true }, (cell) => {
         cell.border = {
@@ -113,83 +110,43 @@ export default function SertifikasiKompetensiPage() {
           bottom: { style: "thin", color: { argb: "FFCCCCCC" } },
           right: { style: "thin", color: { argb: "FFCCCCCC" } },
         };
-        cell.alignment = { vertical: "middle", horizontal: "center" }; // Default align tengah
+        cell.alignment = { vertical: "middle", horizontal: "center" };
       });
-      // Khusus kolom RO diratakan ke kiri
       const roCell = row.getCell(3);
       if (roCell) roCell.alignment = { vertical: "middle", horizontal: "left" };
     };
 
-    // 2. Styling Header (Warna Primer #15406A)
     const headerRow = worksheet.getRow(1);
     headerRow.eachCell((cell) => {
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF15406A" } };
       cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
       cell.alignment = { vertical: "middle", horizontal: "center" };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFFFFFFF" } },
-        left: { style: "thin", color: { argb: "FFFFFFFF" } },
-        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
-        right: { style: "thin", color: { argb: "FFFFFFFF" } },
-      };
     });
 
-    // 3. Masukkan Data Induk dan Anak
     rows.forEach((row, index) => {
       const hasSub = row.subRows.length > 0;
       const paket = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket;
+      const orang = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.orang || 0), 0) : row.orang;
       const realisasi = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi;
-      const orang = hitungOrang(paket);
       const persen = hitungPersen(realisasi, orang);
 
-      // Tambah baris induk
-      const parentRow = worksheet.addRow({
-        no: index + 1,
-        kode: row.kode,
-        ro: row.ro,
-        paket: paket,
-        orang: orang,
-        realisasi: realisasi,
-        persen: `${persen}%`,
-      });
-      
+      const parentRow = worksheet.addRow({ no: index + 1, kode: row.kode, ro: row.ro, paket: paket, orang: orang, realisasi: realisasi, persen: `${persen}%` });
       applyBorder(parentRow);
       if (hasSub) {
         parentRow.font = { bold: true };
-        parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } }; // bg-gray-50
+        parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } };
       }
 
-      // Tambah baris anak (Sub-RO)
       row.subRows.forEach((sub) => {
-        const subOrang = hitungOrang(sub.paket);
-        const subPersen = hitungPersen(sub.realisasi, subOrang);
-        const subRow = worksheet.addRow({
-          no: "", // Kosong untuk sub
-          kode: sub.kode,
-          ro: `    ↳ ${sub.ro}`, // Indentasi Sub-RO
-          paket: sub.paket,
-          orang: subOrang,
-          realisasi: sub.realisasi,
-          persen: `${subPersen}%`,
-        });
+        const subPersen = hitungPersen(sub.realisasi, sub.orang);
+        const subRow = worksheet.addRow({ no: "", kode: sub.kode, ro: `    ↳ ${sub.ro}`, paket: sub.paket, orang: sub.orang, realisasi: sub.realisasi, persen: `${subPersen}%` });
         applyBorder(subRow);
       });
     });
 
-    // 4. Tambahkan Baris Jumlah Total di Paling Bawah
-    const totalRow = worksheet.addRow({
-      no: "",
-      kode: "",
-      ro: "JUMLAH TOTAL",
-      paket: totalPaket,
-      orang: totalOrang,
-      realisasi: totalRealisasi,
-      persen: `${totalPersen}%`,
-    });
-
-    // Styling Baris Total (Warna Amber / Emas)
+    const totalRow = worksheet.addRow({ no: "", kode: "", ro: "JUMLAH TOTAL", paket: totalPaket, orang: totalOrang, realisasi: totalRealisasi, persen: `${totalPersen}%` });
     totalRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } }; // Warna setara bg-amber-500
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } };
       cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
       cell.border = {
         top: { style: "thin", color: { argb: "FFFFFFFF" } },
@@ -197,23 +154,14 @@ export default function SertifikasiKompetensiPage() {
         bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
         right: { style: "thin", color: { argb: "FFFFFFFF" } },
       };
-      
-      if (colNumber === 3) {
-        cell.alignment = { vertical: "middle", horizontal: "right" }; // Teks Jumlah Total ke kanan
-      } else {
-        cell.alignment = { vertical: "middle", horizontal: "center" };
-      }
+      cell.alignment = { vertical: "middle", horizontal: colNumber === 3 ? "right" : "center" };
     });
-
-    // Menggabungkan sel A (NO) sampai C (RO) khusus untuk Baris Total agar rapi
     worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
 
-    // 5. Ekspor menjadi file Excel
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), "Data_Sertifikasi_Kompetensi.xlsx");
   };
 
-  // --- Fungsi Menyimpan Ke Database Murni ---
   const simpanData = async () => {
     setIsSaving(true);
     const result = await simpanBulkRincianOutput("NON-ABT", "sertifikasi", rows);
@@ -227,8 +175,8 @@ export default function SertifikasiKompetensiPage() {
   };
 
   const totalPaket = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket || 0), 0);
+  const totalOrang = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.orang || 0), 0) : row.orang || 0), 0);
   const totalRealisasi = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.realisasi || 0), 0) : row.realisasi || 0), 0);
-  const totalOrang = hitungOrang(totalPaket);
   const totalPersen = hitungPersen(totalRealisasi, totalOrang);
 
   if (isLoading) {
@@ -238,13 +186,8 @@ export default function SertifikasiKompetensiPage() {
           <div className="w-2 rounded-full bg-[#15406A] animate-[loadingBar_1s_ease-in-out_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/80 animate-[loadingBar_1s_ease-in-out_0.15s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/60 animate-[loadingBar_1s_ease-in-out_0.3s_infinite]" />
-          <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
-          <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-
         <p className="text-sm font-semibold text-[#15406A]">Memuat data Sertifikasi Kompetensi</p>
-
-        <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
   }
@@ -300,13 +243,6 @@ export default function SertifikasiKompetensiPage() {
         </div>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-        <p className="text-amber-800 text-sm font-medium leading-relaxed">
-          <span className="font-bold">Peringatan:</span> Pastikan Anda selalu menekan tombol <b className="text-[#15406A]">Simpan Data</b> di bagian bawah tabel setelah selesai menambah atau mengedit rincian.
-        </p>
-      </div>
-
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left border-collapse">
@@ -355,8 +291,8 @@ export default function SertifikasiKompetensiPage() {
                 rows.map((row, index) => {
                   const hasSub = row.subRows.length > 0;
                   const displayPaket = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.paket || 0), 0) : row.paket;
+                  const displayOrang = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.orang || 0), 0) : row.orang;
                   const displayRealisasi = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.realisasi || 0), 0) : row.realisasi;
-                  const displayOrang = hitungOrang(displayPaket);
                   const displayPersen = hitungPersen(displayRealisasi, displayOrang);
 
                   return (
@@ -379,7 +315,16 @@ export default function SertifikasiKompetensiPage() {
                             className={`w-full h-full px-4 py-3 text-center outline-none ${hasSub ? "bg-gray-100 cursor-not-allowed" : "bg-transparent focus:bg-blue-50/50"}`}
                           />
                         </td>
-                        <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50">{displayOrang}</td>
+                        <td className="border-r border-gray-200 p-0">
+                          <input
+                            type="number"
+                            value={displayOrang === 0 ? "" : displayOrang}
+                            onChange={(e) => updateBarisUtama(row.id, "orang", Number(e.target.value))}
+                            disabled={hasSub}
+                            placeholder="0"
+                            className={`w-full h-full px-4 py-3 text-center outline-none ${hasSub ? "bg-gray-100 cursor-not-allowed" : "bg-transparent focus:bg-blue-50/50"}`}
+                          />
+                        </td>
                         <td className="border-r border-gray-200 p-0">
                           <input
                             type="number"
@@ -404,8 +349,7 @@ export default function SertifikasiKompetensiPage() {
                       </tr>
 
                       {row.subRows.map((sub) => {
-                        const subOrang = hitungOrang(sub.paket);
-                        const subPersen = hitungPersen(sub.realisasi, subOrang);
+                        const subPersen = hitungPersen(sub.realisasi, sub.orang);
                         return (
                           <tr key={sub.id} className="border-b border-gray-100 hover:bg-blue-50/30">
                             <td className="border-r border-gray-200 bg-gray-50"></td>
@@ -433,7 +377,15 @@ export default function SertifikasiKompetensiPage() {
                                 className="w-full h-full px-4 py-2.5 text-center bg-transparent outline-none focus:bg-white text-sm"
                               />
                             </td>
-                            <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-gray-50/50 text-sm text-gray-500">{subOrang}</td>
+                            <td className="border-r border-gray-200 p-0">
+                              <input
+                                type="number"
+                                value={sub.orang === 0 ? "" : sub.orang}
+                                onChange={(e) => updateSubBaris(row.id, sub.id, "orang", Number(e.target.value))}
+                                placeholder="0"
+                                className="w-full h-full px-4 py-2.5 text-center bg-transparent outline-none focus:bg-white text-sm"
+                              />
+                            </td>
                             <td className="border-r border-gray-200 p-0">
                               <input
                                 type="number"

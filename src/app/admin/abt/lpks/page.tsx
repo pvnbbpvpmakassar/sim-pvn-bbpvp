@@ -9,10 +9,10 @@ import { saveAs } from "file-saver";
 // Impor fungsi database
 import { getRincianOutput, simpanBulkRincianOutput } from "@/app/actions/data";
 
-type SubRow = { id: string; kode: string; ro: string; paket: number; realisasi: number; isReadOnly?: boolean };
-type Row = { id: string; kode: string; ro: string; paket: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
+// 1. PERBAIKAN TIPE DATA: Tambahkan 'orang' yang bersifat opsional untuk sinkronisasi state ke database
+type SubRow = { id: string; kode: string; ro: string; paket: number; orang?: number; realisasi: number; isReadOnly?: boolean };
+type Row = { id: string; kode: string; ro: string; paket: number; orang?: number; realisasi: number; subRows: SubRow[]; isReadOnly?: boolean };
 type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
-type ExcelRow = { NO: number | string; KODE: string; "RINCIAN OUTPUT (RO)": string; "TARGET PAKET": number; "TARGET ORANG": number; REALISASI: number; "PERSEN (%)": string };
 
 export default function LpksKompetensiPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -22,10 +22,10 @@ export default function LpksKompetensiPage() {
   const [modal, setModal] = useState<ModalConfig>({ isOpen: false, type: "confirm", title: "", message: "" });
   const closeModal = () => setModal((prev) => ({ ...prev, isOpen: false }));
 
+  // Fungsi Kalkulasi Otomatis
   const hitungOrang = (paket: number) => paket * 16;
   const hitungPersen = (realisasi: number, orang: number) => (orang > 0 ? ((realisasi / orang) * 100).toFixed(2) : "0.00");
 
-  // --- Memuat Data dari Database saat Render Pertama ---
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -40,9 +40,9 @@ export default function LpksKompetensiPage() {
     fetchData();
   }, []);
 
-  const tambahBarisUtama = () => setRows([...rows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0, subRows: [] }]);
+  const tambahBarisUtama = () => setRows([...rows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, orang: 0, realisasi: 0, subRows: [] }]);
   const tambahSubBaris = (parentId: string) => {
-    setRows(rows.map((row) => (row.id === parentId ? { ...row, paket: 0, realisasi: 0, subRows: [...row.subRows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, realisasi: 0 }] } : row)));
+    setRows(rows.map((row) => (row.id === parentId ? { ...row, paket: 0, orang: 0, realisasi: 0, subRows: [...row.subRows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, orang: 0, realisasi: 0 }] } : row)));
   };
   const hapusBarisUtama = (id: string) =>
     setModal({
@@ -83,7 +83,39 @@ export default function LpksKompetensiPage() {
   const updateSubBaris = (parentId: string, subId: string, field: keyof SubRow, value: string | number) =>
     setRows(rows.map((row) => (row.id === parentId ? { ...row, subRows: row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub)) } : row)));
 
-// --- Fungsi Download Excel Berwarna ---
+  // --- 2. PERBAIKAN FUNGSI SIMPAN: Pencegatan data untuk menyisipkan kalkulasi 'orang' ---
+  const simpanData = async () => {
+    setIsSaving(true);
+
+    const rowsToSave = rows.map((row) => {
+      const hasSub = row.subRows.length > 0;
+      
+      const subRowsWithOrang = row.subRows.map(sub => ({
+        ...sub,
+        orang: hitungOrang(sub.paket)
+      }));
+
+      const parentOrang = hasSub 
+        ? subRowsWithOrang.reduce((acc, sub) => acc + (sub.orang || 0), 0)
+        : hitungOrang(row.paket);
+
+      return {
+        ...row,
+        orang: parentOrang,
+        subRows: subRowsWithOrang
+      };
+    });
+
+    const result = await simpanBulkRincianOutput("ABT", "lpks", rowsToSave);
+
+    if (result.success) {
+      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data LPKS berhasil disimpan ke Database!" });
+    } else {
+      setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan saat menyimpan ke database: ${result.error}` });
+    }
+    setIsSaving(false);
+  };
+
   const handleDownloadExcel = async () => {
     if (rows.length === 0) {
       setModal({ isOpen: true, type: "error", title: "Gagal", message: "Tabel kosong." });
@@ -93,7 +125,6 @@ export default function LpksKompetensiPage() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("LPKS");
 
-    // 1. Definisikan Kolom dan Lebarnya
     worksheet.columns = [
       { header: "NO.", key: "no", width: 8 },
       { header: "KODE", key: "kode", width: 15 },
@@ -104,7 +135,6 @@ export default function LpksKompetensiPage() {
       { header: "PERSEN (%)", key: "persen", width: 15 },
     ];
 
-    // Fungsi bantuan untuk menerapkan border ke sebuah baris
     const applyBorder = (row: ExcelJS.Row) => {
       row.eachCell({ includeEmpty: true }, (cell) => {
         cell.border = {
@@ -113,14 +143,12 @@ export default function LpksKompetensiPage() {
           bottom: { style: "thin", color: { argb: "FFCCCCCC" } },
           right: { style: "thin", color: { argb: "FFCCCCCC" } },
         };
-        cell.alignment = { vertical: "middle", horizontal: "center" }; // Default align tengah
+        cell.alignment = { vertical: "middle", horizontal: "center" };
       });
-      // Khusus kolom RO diratakan ke kiri
       const roCell = row.getCell(3);
       if (roCell) roCell.alignment = { vertical: "middle", horizontal: "left" };
     };
 
-    // 2. Styling Header (Warna Primer #15406A)
     const headerRow = worksheet.getRow(1);
     headerRow.eachCell((cell) => {
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF15406A" } };
@@ -134,7 +162,6 @@ export default function LpksKompetensiPage() {
       };
     });
 
-    // 3. Masukkan Data Induk dan Anak
     rows.forEach((row, index) => {
       const hasSub = row.subRows.length > 0;
       const paket = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket;
@@ -142,7 +169,6 @@ export default function LpksKompetensiPage() {
       const orang = hitungOrang(paket);
       const persen = hitungPersen(realisasi, orang);
 
-      // Tambah baris induk
       const parentRow = worksheet.addRow({
         no: index + 1,
         kode: row.kode,
@@ -156,17 +182,21 @@ export default function LpksKompetensiPage() {
       applyBorder(parentRow);
       if (hasSub) {
         parentRow.font = { bold: true };
-        parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } }; // bg-gray-50
+        parentRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9FAFB" } };
       }
 
-      // Tambah baris anak (Sub-RO)
-      row.subRows.forEach((sub) => {
+      // PERBAIKAN EXCEL: Urutkan Sub-RO di hasil unduhan juga
+      const sortedSubRows = [...row.subRows].sort((a, b) => {
+        return a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      sortedSubRows.forEach((sub) => {
         const subOrang = hitungOrang(sub.paket);
         const subPersen = hitungPersen(sub.realisasi, subOrang);
         const subRow = worksheet.addRow({
-          no: "", // Kosong untuk sub
+          no: "",
           kode: sub.kode,
-          ro: `    ↳ ${sub.ro}`, // Indentasi Sub-RO
+          ro: `    ↳ ${sub.ro}`,
           paket: sub.paket,
           orang: subOrang,
           realisasi: sub.realisasi,
@@ -176,7 +206,6 @@ export default function LpksKompetensiPage() {
       });
     });
 
-    // 4. Tambahkan Baris Jumlah Total di Paling Bawah
     const totalRow = worksheet.addRow({
       no: "",
       kode: "",
@@ -187,9 +216,8 @@ export default function LpksKompetensiPage() {
       persen: `${totalPersen}%`,
     });
 
-    // Styling Baris Total (Warna Amber / Emas)
     totalRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } }; // Warna setara bg-amber-500
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF59E0B" } };
       cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
       cell.border = {
         top: { style: "thin", color: { argb: "FFFFFFFF" } },
@@ -199,31 +227,16 @@ export default function LpksKompetensiPage() {
       };
       
       if (colNumber === 3) {
-        cell.alignment = { vertical: "middle", horizontal: "right" }; // Teks Jumlah Total ke kanan
+        cell.alignment = { vertical: "middle", horizontal: "right" };
       } else {
         cell.alignment = { vertical: "middle", horizontal: "center" };
       }
     });
 
-    // Menggabungkan sel A (NO) sampai C (RO) khusus untuk Baris Total agar rapi
     worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
 
-    // 5. Ekspor menjadi file Excel
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), "Data_LPKS_Kompetensi.xlsx");
-  };
-
-  // --- Fungsi Menyimpan Ke Database Murni ---
-  const simpanData = async () => {
-    setIsSaving(true);
-    const result = await simpanBulkRincianOutput("ABT", "lpks", rows);
-
-    if (result.success) {
-      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data LPKS berhasil disimpan ke Database!" });
-    } else {
-      setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan saat menyimpan ke database: ${result.error}` });
-    }
-    setIsSaving(false);
   };
 
   const totalPaket = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket || 0), 0);
@@ -241,9 +254,7 @@ export default function LpksKompetensiPage() {
           <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-
         <p className="text-sm font-semibold text-[#15406A]">Memuat data LPKS</p>
-
         <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
@@ -312,32 +323,16 @@ export default function LpksKompetensiPage() {
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-[#15406A] text-white">
               <tr>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-16">
-                  NO.
-                </th>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 w-32">
-                  Kode
-                </th>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">
-                  Rincian Output (RO)
-                </th>
-                <th colSpan={4} className="border border-[#1a4e82] px-4 py-2 text-center">
-                  ABT
-                </th>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-32">
-                  Aksi
-                </th>
+                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-16">NO.</th>
+                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 w-32">Kode</th>
+                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">Rincian Output (RO)</th>
+                <th colSpan={4} className="border border-[#1a4e82] px-4 py-2 text-center">ABT</th>
+                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-32">Aksi</th>
               </tr>
               <tr>
-                <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#184878]">
-                  Target
-                </th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">
-                  Realisasi
-                </th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">
-                  Persen (%)
-                </th>
+                <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#184878]">Target</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">Realisasi</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">Persen (%)</th>
               </tr>
               <tr>
                 <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c] w-24">Paket</th>
@@ -358,6 +353,11 @@ export default function LpksKompetensiPage() {
                   const displayRealisasi = hasSub ? row.subRows.reduce((acc, curr) => acc + (curr.realisasi || 0), 0) : row.realisasi;
                   const displayOrang = hitungOrang(displayPaket);
                   const displayPersen = hitungPersen(displayRealisasi, displayOrang);
+
+                  // 3. PERBAIKAN SORTING: Mengurutkan Sub-RO secara Alphanumeric berdasarkan Kode
+                  const sortedSubRows = [...row.subRows].sort((a, b) => {
+                    return a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: 'base' });
+                  });
 
                   return (
                     <React.Fragment key={row.id}>
@@ -403,7 +403,7 @@ export default function LpksKompetensiPage() {
                         </td>
                       </tr>
 
-                      {row.subRows.map((sub) => {
+                      {sortedSubRows.map((sub) => {
                         const subOrang = hitungOrang(sub.paket);
                         const subPersen = hitungPersen(sub.realisasi, subOrang);
                         return (

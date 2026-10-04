@@ -2,11 +2,10 @@
 
 import React, { useState, useEffect, Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Save, Download, AlertCircle, CheckCircle, ChevronDown, ChevronRight, CornerDownRight } from "lucide-react";
+import { Save, Download, AlertCircle, CheckCircle, ChevronDown, ChevronRight, CornerDownRight, Plus, PlusCircle, Trash2 } from "lucide-react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-// Impor fungsi Server Action
 import { getRincianAnggaran, simpanBulkRincianAnggaran, ModulAnggaranGroup } from "@/app/actions/data";
 
 type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
@@ -23,7 +22,6 @@ export default function RincianAnggaranPage() {
 
   const closeModal = () => setModal({ ...modal, isOpen: false });
 
-  // Utilitas Formatter
   const formatRp = (value: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(value);
   const formatInputAngka = (value: number) => (value === 0 ? "" : new Intl.NumberFormat("id-ID").format(value));
   const hitungPersen = (realisasi: number, anggaran: number) => {
@@ -39,10 +37,7 @@ export default function RincianAnggaranPage() {
       if (res.success && res.data) {
         setAbtData(res.data.abt);
         setNonAbtData(res.data.nonAbt);
-
-        if (res.data.abt.length > 0) {
-          setExpandedModules({ [`ABT-${res.data.abt[0].modul}`]: true });
-        }
+        if (res.data.abt.length > 0) setExpandedModules({ [`ABT-${res.data.abt[0].modul}`]: true });
       } else {
         setModal({ isOpen: true, type: "error", title: "Gagal Memuat", message: res.error || "Gagal menarik data." });
       }
@@ -56,7 +51,6 @@ export default function RincianAnggaranPage() {
     setExpandedModules((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // --- LOGIKA CERDAS: Mencegah Input Melebihi Sisa Alokasi ---
   const handleAngkaChange = (valStr: string, modulName: string, rowId: string, field: "anggaran" | "realisasi", isABT: boolean, subId?: string) => {
     const rawValue = valStr.replace(/[^0-9]/g, "");
     let numValue = rawValue ? parseInt(rawValue, 10) : 0;
@@ -67,12 +61,9 @@ export default function RincianAnggaranPage() {
 
     const group = targetGroups[groupIndex];
 
-    // Jika yang diedit adalah Anggaran, cegah jika melewati batas "Anggaran Tersedia"
     if (field === "anggaran") {
       let totalDirinci = 0;
       let oldValue = 0;
-
-      // Hitung total saat ini dan cari nilai lama dari baris yang sedang diedit
       group.rows.forEach((r) => {
         const hasSub = r.subRows.length > 0;
         if (hasSub) {
@@ -88,14 +79,9 @@ export default function RincianAnggaranPage() {
 
       const sisaTersedia = group.alokasi - totalDirinci;
       const selisihInput = numValue - oldValue;
-
-      // Jika user mencoba menambah angka melebihi sisa yang ada, CAP (tahan) di batas maksimum
-      if (selisihInput > sisaTersedia) {
-        numValue = oldValue + sisaTersedia;
-      }
+      if (selisihInput > sisaTersedia) numValue = oldValue + sisaTersedia;
     }
 
-    // --- Terapkan perubahan state ---
     const updateGroups = (groups: ModulAnggaranGroup[]) =>
       groups.map((g) => {
         if (g.modul !== modulName) return g;
@@ -116,15 +102,130 @@ export default function RincianAnggaranPage() {
     else setNonAbtData(updateGroups(nonAbtData));
   };
 
+  // --- LOGIKA TEXT (Teks Kode & RO untuk baris manual) ---
+  const handleTextChange = (value: string, modulName: string, rowId: string, field: "kode" | "ro", isABT: boolean, subId?: string) => {
+    const updateGroups = (groups: ModulAnggaranGroup[]) =>
+      groups.map((g) => {
+        if (g.modul !== modulName) return g;
+        const newRows = g.rows.map((row) => {
+          if (row.id === rowId) {
+            if (subId) {
+              const newSubs = row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub));
+              return { ...row, subRows: newSubs };
+            }
+            return { ...row, [field]: value };
+          }
+          return row;
+        });
+        return { ...g, rows: newRows };
+      });
+
+    if (isABT) setAbtData(updateGroups(abtData));
+    else setNonAbtData(updateGroups(nonAbtData));
+  };
+
+  // --- LOGIKA TAMBAH/HAPUS BARIS MANUAL ---
+  const handleTambahRow = (modulName: string, isABT: boolean) => {
+    const updateGroups = (groups: ModulAnggaranGroup[]) =>
+      groups.map((g) => {
+        if (g.modul !== modulName) return g;
+        const newRow = {
+          id: crypto.randomUUID(),
+          kode: "",
+          ro: "",
+          anggaran: 0,
+          realisasi: 0,
+          subRows: [],
+          isFromDB: false,
+          fallbackInsert: {
+            kategori: isABT ? "ABT" : "NON-ABT",
+            modul: g.modul.toLowerCase(),
+            kode: "",
+            ro: "",
+            parent_id: null,
+          },
+        };
+        return { ...g, rows: [...g.rows, newRow] };
+      });
+
+    if (isABT) setAbtData(updateGroups(abtData));
+    else setNonAbtData(updateGroups(nonAbtData));
+  };
+
+  const handleTambahSubRow = (modulName: string, rowId: string, isABT: boolean) => {
+    const updateGroups = (groups: ModulAnggaranGroup[]) =>
+      groups.map((g) => {
+        if (g.modul !== modulName) return g;
+        const newRows = g.rows.map((row) => {
+          if (row.id === rowId) {
+            const newSub = {
+              id: crypto.randomUUID(),
+              kode: "",
+              ro: "",
+              anggaran: 0,
+              realisasi: 0,
+              isFromDB: false,
+              fallbackInsert: {
+                kategori: isABT ? "ABT" : "NON-ABT",
+                modul: g.modul.toLowerCase(),
+                kode: "",
+                ro: "",
+                parent_id: row.id,
+              },
+            };
+            return { ...row, anggaran: 0, realisasi: 0, subRows: [...row.subRows, newSub] };
+          }
+          return row;
+        });
+        return { ...g, rows: newRows };
+      });
+
+    if (isABT) setAbtData(updateGroups(abtData));
+    else setNonAbtData(updateGroups(nonAbtData));
+  };
+
+  const handleHapusRow = (modulName: string, rowId: string, isABT: boolean, subId?: string) => {
+    setModal({
+      isOpen: true,
+      type: "confirm",
+      title: "Hapus Baris Tambahan?",
+      message: "Data ini akan dihapus permanen. Lanjutkan?",
+      onConfirm: () => {
+        const updateGroups = (groups: ModulAnggaranGroup[]) =>
+          groups.map((g) => {
+            if (g.modul !== modulName) return g;
+            if (subId) {
+              const newRows = g.rows.map((row) => (row.id === rowId ? { ...row, subRows: row.subRows.filter((s) => s.id !== subId) } : row));
+              return { ...g, rows: newRows };
+            }
+            return { ...g, rows: g.rows.filter((r) => r.id !== rowId) };
+          });
+
+        if (isABT) setAbtData(updateGroups(abtData));
+        else setNonAbtData(updateGroups(nonAbtData));
+        closeModal();
+      },
+    });
+  };
+
   const simpanData = async () => {
     setIsSaving(true);
 
-    // PERBAIKAN: Ganti tipe 'any' menjadi struktur data yang spesifik
+    // PERBAIKAN: Hapus 'any' dan definisikan struktur tipe datanya secara ketat
     const payload: {
       id: string;
+      kode: string;
+      ro: string;
+      parent_id: string | null;
       anggaran: number;
       realisasi: number;
-      fallbackInsert?: { kategori: string; modul: string; kode: string; ro: string; parent_id: string | null };
+      fallbackInsert?: {
+        kategori: string;
+        modul: string;
+        kode: string;
+        ro: string;
+        parent_id: string | null;
+      };
     }[] = [];
 
     const processGroups = (groups: ModulAnggaranGroup[]) => {
@@ -134,8 +235,26 @@ export default function RincianAnggaranPage() {
           const finalAnggaran = hasSub ? row.subRows.reduce((a, b) => a + b.anggaran, 0) : row.anggaran;
           const finalRealisasi = hasSub ? row.subRows.reduce((a, b) => a + b.realisasi, 0) : row.realisasi;
 
-          payload.push({ id: row.id, anggaran: finalAnggaran, realisasi: finalRealisasi, fallbackInsert: row.fallbackInsert });
-          row.subRows.forEach((sub) => payload.push({ id: sub.id, anggaran: sub.anggaran, realisasi: sub.realisasi, fallbackInsert: sub.fallbackInsert }));
+          payload.push({
+            id: row.id,
+            kode: row.kode,
+            ro: row.ro,
+            parent_id: null,
+            anggaran: finalAnggaran,
+            realisasi: finalRealisasi,
+            fallbackInsert: row.fallbackInsert,
+          });
+          row.subRows.forEach((sub) =>
+            payload.push({
+              id: sub.id,
+              kode: sub.kode,
+              ro: sub.ro,
+              parent_id: row.id,
+              anggaran: sub.anggaran,
+              realisasi: sub.realisasi,
+              fallbackInsert: sub.fallbackInsert,
+            }),
+          );
         });
       });
     };
@@ -182,7 +301,9 @@ export default function RincianAnggaranPage() {
         modulRow.getCell(3).font = { bold: true };
         rowIndex++;
 
-        group.rows.forEach((row, i) => {
+        const sortedRows = [...group.rows].sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+
+        sortedRows.forEach((row, i) => {
           const hasSub = row.subRows.length > 0;
           const displayAnggaran = hasSub ? row.subRows.reduce((a, b) => a + b.anggaran, 0) : row.anggaran;
           const displayRealisasi = hasSub ? row.subRows.reduce((a, b) => a + b.realisasi, 0) : row.realisasi;
@@ -191,7 +312,8 @@ export default function RincianAnggaranPage() {
           if (hasSub) parentRow.font = { bold: true };
           rowIndex++;
 
-          row.subRows.forEach((sub) => {
+          const sortedSubRows = [...row.subRows].sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+          sortedSubRows.forEach((sub) => {
             worksheet.addRow(["", sub.kode, `    ↳ ${sub.ro}`, sub.anggaran, sub.realisasi, `${hitungPersen(sub.realisasi, sub.anggaran)}%`]);
             rowIndex++;
           });
@@ -209,12 +331,11 @@ export default function RincianAnggaranPage() {
   const renderModulGroups = (groups: ModulAnggaranGroup[], isABT: boolean) => {
     const kategoriStr = isABT ? "ABT" : "NON-ABT";
 
-    if (groups.length === 0) return <div className="p-8 text-center text-gray-400 bg-white rounded-2xl shadow-sm border border-gray-200">Belum ada rincian data untuk kategori ini. Pastikan Anda sudah mengisi RO di halaman Modul.</div>;
+    if (groups.length === 0) return <div className="p-8 text-center text-gray-400 bg-white rounded-2xl shadow-sm border border-gray-200">Belum ada rincian data untuk kategori ini.</div>;
 
     return groups.map((group) => {
       const isExpanded = expandedModules[`${kategoriStr}-${group.modul}`] || false;
 
-      // Kalkulasi Total & Sisa per Modul
       let totalDirinciModul = 0;
       let totalRealisasiModul = 0;
       group.rows.forEach((r) => {
@@ -226,9 +347,11 @@ export default function RincianAnggaranPage() {
       const sisaAnggaran = group.alokasi - totalDirinciModul;
       const isHabis = sisaAnggaran <= 0;
 
+      // Urutkan Baris Induk
+      const sortedRows = [...group.rows].sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+
       return (
         <div key={group.modul} className={`bg-white rounded-xl shadow-sm border ${isHabis ? "border-red-200" : "border-gray-200"} overflow-hidden mb-6`}>
-          {/* Accordion Header */}
           <button
             onClick={() => toggleModul(kategoriStr, group.modul)}
             className={`w-full px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center transition-colors gap-4 ${isHabis ? "bg-[#757575] hover:bg-[#646464]" : "bg-[#15406A] hover:bg-[#0f2f4e]"}`}
@@ -253,7 +376,6 @@ export default function RincianAnggaranPage() {
             </div>
           </button>
 
-          {/* Accordion Body */}
           <AnimatePresence>
             {isExpanded && (
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-x-auto">
@@ -276,21 +398,39 @@ export default function RincianAnggaranPage() {
                       <th className="border-y border-gray-200 px-4 py-3 min-w-[250px]">Rincian Output (RO)</th>
                       <th className="border-y border-gray-200 px-4 py-3 text-center w-48">Anggaran (Rp.)</th>
                       <th className="border-y border-gray-200 px-4 py-3 text-center w-48">Realisasi (Rp.)</th>
-                      <th className="border-y border-gray-200 px-4 py-3 text-center w-32">Persen (%)</th>
+                      <th className="border-y border-gray-200 px-4 py-3 text-center w-24">Persen (%)</th>
+                      <th className="border-y border-gray-200 px-4 py-3 text-center w-28">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="text-gray-700">
-                    {group.rows.map((row, index) => {
+                    {sortedRows.map((row, index) => {
                       const hasSub = row.subRows.length > 0;
                       const displayAnggaran = hasSub ? row.subRows.reduce((a, b) => a + b.anggaran, 0) : row.anggaran;
                       const displayRealisasi = hasSub ? row.subRows.reduce((a, b) => a + b.realisasi, 0) : row.realisasi;
+                      const isManualRow = !row.isFromDB; // Baris yang ditambah langsung di layar ini
 
                       return (
                         <Fragment key={row.id}>
                           <tr className={`border-b border-gray-100 ${hasSub ? "bg-gray-50/50 font-semibold" : "hover:bg-blue-50/30 transition-colors"}`}>
                             <td className="border-r border-gray-100 px-4 py-3 text-center">{index + 1}</td>
-                            <td className="border-r border-gray-100 px-4 py-3">{row.kode}</td>
-                            <td className="border-r border-gray-100 px-4 py-3">{row.ro}</td>
+                            <td className="border-r border-gray-100 p-0">
+                              <input
+                                type="text"
+                                value={row.kode}
+                                onChange={(e) => handleTextChange(e.target.value, group.modul, row.id, "kode", isABT)}
+                                disabled={!isManualRow}
+                                className={`w-full h-full px-4 py-3 bg-transparent outline-none ${!isManualRow ? "cursor-default text-gray-700" : "focus:bg-white"}`}
+                              />
+                            </td>
+                            <td className="border-r border-gray-100 p-0">
+                              <input
+                                type="text"
+                                value={row.ro}
+                                onChange={(e) => handleTextChange(e.target.value, group.modul, row.id, "ro", isABT)}
+                                disabled={!isManualRow}
+                                className={`w-full h-full px-4 py-3 bg-transparent outline-none ${!isManualRow ? "cursor-default text-gray-700" : "focus:bg-white"}`}
+                              />
+                            </td>
                             <td className="border-r border-gray-100 p-0">
                               <div className={`flex w-full h-full ${hasSub ? "bg-gray-100" : "bg-transparent focus-within:bg-white"}`}>
                                 <span className="pl-4 py-3 text-gray-400 font-medium">Rp</span>
@@ -317,52 +457,95 @@ export default function RincianAnggaranPage() {
                                 />
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">{hitungPersen(displayRealisasi, displayAnggaran)}%</td>
+                            <td className="border-r border-gray-100 px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">{hitungPersen(displayRealisasi, displayAnggaran)}%</td>
+                            <td className="px-4 py-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => handleTambahSubRow(group.modul, row.id, isABT)} title="Tambah Sub-RO" className="p-1.5 bg-blue-100 text-[#15406A] rounded hover:bg-blue-200 transition-colors">
+                                  <PlusCircle className="w-4 h-4" />
+                                </button>
+                                {isManualRow && (
+                                  <button onClick={() => handleHapusRow(group.modul, row.id, isABT)} title="Hapus RO Manual" className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
                           </tr>
 
-                          {row.subRows.map((sub) => (
-                            <tr key={sub.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors bg-white">
-                              <td className="border-r border-gray-100 px-4 py-2.5"></td>
-                              <td className="border-r border-gray-100 px-4 py-2.5 text-sm">{sub.kode}</td>
-                              <td className="border-r border-gray-100 px-4 py-2.5 relative">
-                                <div className="absolute left-2 top-3 text-gray-300 pointer-events-none">
-                                  <CornerDownRight className="w-4 h-4" />
-                                </div>
-                                <span className="pl-6 text-sm">{sub.ro}</span>
-                              </td>
-                              <td className="border-r border-gray-100 p-0">
-                                <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
-                                  <span className="pl-4 py-2.5 text-gray-400 text-sm">Rp</span>
+                          {row.subRows.map((sub) => {
+                            const isManualSub = !sub.isFromDB;
+                            return (
+                              <tr key={sub.id} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors bg-white">
+                                <td className="border-r border-gray-100 px-4 py-2.5"></td>
+                                <td className="border-r border-gray-100 p-0 relative">
+                                  <div className="absolute left-2 top-3 text-gray-300 pointer-events-none">
+                                    <CornerDownRight className="w-4 h-4" />
+                                  </div>
                                   <input
                                     type="text"
-                                    value={formatInputAngka(sub.anggaran)}
-                                    onChange={(e) => handleAngkaChange(e.target.value, group.modul, row.id, "anggaran", isABT, sub.id)}
-                                    disabled={group.alokasi === 0}
-                                    placeholder="0"
-                                    className={`w-full h-full px-4 py-2.5 text-right bg-transparent outline-none text-sm font-semibold ${group.alokasi === 0 ? "text-gray-400 cursor-not-allowed" : "text-gray-600"}`}
+                                    value={sub.kode}
+                                    onChange={(e) => handleTextChange(e.target.value, group.modul, row.id, "kode", isABT, sub.id)}
+                                    disabled={!isManualSub}
+                                    className={`w-full h-full pl-8 pr-4 py-2.5 bg-transparent outline-none text-sm ${!isManualSub ? "cursor-default text-gray-600" : "focus:bg-white"}`}
                                   />
-                                </div>
-                              </td>
-                              <td className="border-r border-gray-100 p-0">
-                                <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
-                                  <span className="pl-4 py-2.5 text-gray-400 text-sm">Rp</span>
+                                </td>
+                                <td className="border-r border-gray-100 p-0">
                                   <input
                                     type="text"
-                                    value={formatInputAngka(sub.realisasi)}
-                                    onChange={(e) => handleAngkaChange(e.target.value, group.modul, row.id, "realisasi", isABT, sub.id)}
-                                    placeholder="0"
-                                    className="w-full h-full px-4 py-2.5 text-right bg-transparent outline-none text-sm font-semibold text-gray-600"
+                                    value={sub.ro}
+                                    onChange={(e) => handleTextChange(e.target.value, group.modul, row.id, "ro", isABT, sub.id)}
+                                    disabled={!isManualSub}
+                                    className={`w-full h-full px-4 py-2.5 bg-transparent outline-none text-sm ${!isManualSub ? "cursor-default text-gray-600" : "focus:bg-white"}`}
+                                    placeholder="Sub-rincian..."
                                   />
-                                </div>
-                              </td>
-                              <td className="px-4 py-2.5 text-center text-sm font-bold text-[#15406A] bg-gray-50/30">{hitungPersen(sub.realisasi, sub.anggaran)}%</td>
-                            </tr>
-                          ))}
+                                </td>
+                                <td className="border-r border-gray-100 p-0">
+                                  <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
+                                    <span className="pl-4 py-2.5 text-gray-400 text-sm">Rp</span>
+                                    <input
+                                      type="text"
+                                      value={formatInputAngka(sub.anggaran)}
+                                      onChange={(e) => handleAngkaChange(e.target.value, group.modul, row.id, "anggaran", isABT, sub.id)}
+                                      disabled={group.alokasi === 0}
+                                      placeholder="0"
+                                      className={`w-full h-full px-4 py-2.5 text-right bg-transparent outline-none text-sm font-semibold ${group.alokasi === 0 ? "text-gray-400 cursor-not-allowed" : "text-gray-600"}`}
+                                    />
+                                  </div>
+                                </td>
+                                <td className="border-r border-gray-100 p-0">
+                                  <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
+                                    <span className="pl-4 py-2.5 text-gray-400 text-sm">Rp</span>
+                                    <input
+                                      type="text"
+                                      value={formatInputAngka(sub.realisasi)}
+                                      onChange={(e) => handleAngkaChange(e.target.value, group.modul, row.id, "realisasi", isABT, sub.id)}
+                                      placeholder="0"
+                                      className="w-full h-full px-4 py-2.5 text-right bg-transparent outline-none text-sm font-semibold text-gray-600"
+                                    />
+                                  </div>
+                                </td>
+                                <td className="border-r border-gray-100 px-4 py-2.5 text-center text-sm font-bold text-[#15406A] bg-gray-50/30">{hitungPersen(sub.realisasi, sub.anggaran)}%</td>
+                                <td className="px-4 py-2.5 text-center">
+                                  {isManualSub && (
+                                    <button onClick={() => handleHapusRow(group.modul, row.id, isABT, sub.id)} title="Hapus Sub-RO Manual" className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </Fragment>
                       );
                     })}
                   </tbody>
                 </table>
+
+                <div className="bg-gray-50 p-4 border-t border-gray-200">
+                  <button onClick={() => handleTambahRow(group.modul, isABT)} className="flex items-center gap-2 text-sm font-bold text-[#15406A] hover:text-blue-800 transition-colors">
+                    <Plus className="w-5 h-5" /> Tambah RO Anggaran Khusus
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -381,10 +564,8 @@ export default function RincianAnggaranPage() {
           <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-
-        <p className="text-sm font-semibold text-[#15406A]">Memuat data LPKS</p>
-
-        <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
+        <p className="text-sm font-semibold text-[#15406A]">Memuat Rincian Anggaran</p>
+        <p className="mt-1 text-xs text-slate-400">Menyusun Mega Grup Modul...</p>
       </div>
     );
   }
@@ -397,15 +578,26 @@ export default function RincianAnggaranPage() {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative">
               <div className={`p-6 ${modal.type === "error" ? "bg-red-50" : modal.type === "success" ? "bg-emerald-50" : "bg-blue-50"}`}>
                 <div className="flex items-center gap-4">
-                  {modal.type === "error" ? <AlertCircle className="w-8 h-8 text-red-600" /> : <CheckCircle className="w-8 h-8 text-emerald-600" />}
-                  <h3 className={`text-xl font-bold ${modal.type === "error" ? "text-red-900" : "text-emerald-900"}`}>{modal.title}</h3>
+                  {modal.type === "error" ? <AlertCircle className="w-8 h-8 text-red-600" /> : modal.type === "success" ? <CheckCircle className="w-8 h-8 text-emerald-600" /> : <AlertCircle className="w-8 h-8 text-blue-600" />}
+                  <h3 className={`text-xl font-bold ${modal.type === "error" ? "text-red-900" : modal.type === "success" ? "text-emerald-900" : "text-blue-900"}`}>{modal.title}</h3>
                 </div>
                 <p className="mt-3 text-gray-700 leading-relaxed">{modal.message}</p>
               </div>
               <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
-                <button onClick={closeModal} className={`px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors ${modal.type === "error" ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
-                  Tutup
-                </button>
+                {modal.type === "confirm" ? (
+                  <>
+                    <button onClick={closeModal} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
+                      Batal
+                    </button>
+                    <button onClick={modal.onConfirm} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-[#15406A] hover:bg-blue-900">
+                      Ya, Lanjutkan
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={closeModal} className={`px-5 py-2.5 rounded-lg text-sm font-medium text-white ${modal.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
+                    Tutup
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>
@@ -422,7 +614,6 @@ export default function RincianAnggaranPage() {
         </button>
       </div>
 
-      {/* Tabs Kategori */}
       <div className="flex bg-gray-100 p-1 rounded-xl w-fit">
         <button onClick={() => setActiveTab("ABT")} className={`px-8 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === "ABT" ? "bg-white text-[#15406A] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
           Kategori ABT
@@ -432,7 +623,6 @@ export default function RincianAnggaranPage() {
         </button>
       </div>
 
-      {/* Area Render Modul Bawaan */}
       <div className="pt-2">{activeTab === "ABT" ? renderModulGroups(abtData, true) : renderModulGroups(nonAbtData, false)}</div>
 
       <div className="flex justify-end pt-4 pb-12">
