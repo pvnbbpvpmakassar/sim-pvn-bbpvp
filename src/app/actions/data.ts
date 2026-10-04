@@ -401,7 +401,6 @@ export async function getRincianAnggaran() {
       const filtered = roData.filter((r) => r.kategori === kategori);
       const alokasiKategori = alokasiData.filter((a) => a.kategori === kategori);
 
-      // PERBAIKAN: Masukkan kedua ejaan "plfk" dan "pflk" agar tidak bocor jadi card sendiri
       const uptpGroupModules = ["uptp", "tmt", "lpks", "blkk", "satpel", "uptd", "plfk", "pflk"];
       const independentModules = Array.from(new Set(filtered.map((r) => r.modul))).filter((m) => !uptpGroupModules.includes(m.toLowerCase()));
 
@@ -470,6 +469,7 @@ export async function getRincianAnggaran() {
 
         const integratedSubRows: AnggaranSubRowData[] = [];
 
+        // PERBAIKAN: Masukkan logika penyisipan Sub-RO untuk NON-ABT juga
         if (kategori === "ABT") {
           const tmt = getIntegrasiRow("tmt", "TMT", "11111111-1111-1111-1111-111111111112");
           if (tmt) integratedSubRows.push(tmt);
@@ -482,6 +482,18 @@ export async function getRincianAnggaran() {
           const blkk = getIntegrasiRow("blkk", "BLKK", "11111111-1111-1111-1111-111111111114");
           if (blkk) integratedSubRows.push(blkk);
           else integratedSubRows.push({ id: "11111111-1111-1111-1111-111111111114", kode: "-", ro: "BLKK", anggaran: 0, realisasi: 0, isFromDB: true });
+        } else if (kategori === "NON-ABT") {
+          const tmt = getIntegrasiRow("tmt", "TMT", "22222222-2222-2222-2222-222222222223");
+          if (tmt) integratedSubRows.push(tmt);
+          else integratedSubRows.push({ id: "22222222-2222-2222-2222-222222222223", kode: "-", ro: "TMT", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          const lpks = getIntegrasiRow("lpks", "LPKS", "22222222-2222-2222-2222-222222222224");
+          if (lpks) integratedSubRows.push(lpks);
+          else integratedSubRows.push({ id: "22222222-2222-2222-2222-222222222224", kode: "-", ro: "LPKS", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          const blkk = getIntegrasiRow("blkk", "BLKK", "22222222-2222-2222-2222-222222222225");
+          if (blkk) integratedSubRows.push(blkk);
+          else integratedSubRows.push({ id: "22222222-2222-2222-2222-222222222225", kode: "-", ro: "BLKK", anggaran: 0, realisasi: 0, isFromDB: true });
         }
 
         const uptpChildren = filtered.filter((r) => r.modul === "uptp" && r.parent_id !== null);
@@ -530,7 +542,6 @@ export async function getRincianAnggaran() {
 
         const satpelRows = buildRowsForModule("satpel", "");
         const uptdRows = buildRowsForModule("uptd", "");
-        // PERBAIKAN: Tangkap data dengan ejaan "plfk" maupun typo "pflk"
         const plfkRows = [...buildRowsForModule("plfk", ""), ...buildRowsForModule("pflk", "")];
 
         const allUptpGroupRows = [integratedRow, ...otherUptpRows, ...satpelRows, ...uptdRows, ...plfkRows];
@@ -577,7 +588,7 @@ export async function getRincianAnggaran() {
     if (error instanceof Error) return { success: false, error: error.message };
     return { success: false, error: "Gagal mengambil data dari database" };
   }
-}
+} 
 
 // --- Fungsi Upsert (Penyimpanan Massal Nilai Anggaran Saja) ---
 // --- Fungsi Upsert (Penyimpanan Massal Nilai Anggaran Saja) ---
@@ -1228,5 +1239,45 @@ export async function getDashboardRekapan() {
       success: false,
       error: "Gagal memuat data Dashboard.",
     };
+  }
+}
+
+
+// ============================================================
+// MODUL MENU DUMMY (INDEPENDEN)
+// ============================================================
+
+export type MenuDummyRowData = {
+  id: string;
+  nama: string;
+  target: number;
+  realisasi: number;
+};
+
+export async function getMenuDummy() {
+  try {
+    const data = await sql`SELECT * FROM menu_dummy ORDER BY created_at ASC`;
+    return { success: true, data: data as MenuDummyRowData[] };
+  } catch (error: unknown) {
+    if (error instanceof Error) return { success: false, error: error.message };
+    return { success: false, error: "Gagal mengambil data dari database" };
+  }
+}
+
+export async function simpanBulkMenuDummy(payload: MenuDummyRowData[]) {
+  try {
+    // Pendekatan sinkronisasi penuh: Hapus data lama, masukkan data baru dari UI
+    await sql`DELETE FROM menu_dummy`;
+    
+    for (const item of payload) {
+      await sql`
+        INSERT INTO menu_dummy (id, nama, target, realisasi)
+        VALUES (${item.id}, ${item.nama}, ${item.target}, ${item.realisasi})
+      `;
+    }
+    return { success: true };
+  } catch (error: unknown) {
+    if (error instanceof Error) return { success: false, error: error.message };
+    return { success: false, error: "Terjadi kesalahan saat menyimpan data Menu Dummy." };
   }
 }

@@ -55,6 +55,11 @@ const menuItems = [
       href: `/admin/non-abt/${sub.slug}`,
     })),
   },
+    {
+    name: "Menu Dummy?",
+    href: "/admin/menu-dummy",
+    icon: LayoutDashboard,
+  },
   {
     name: "Anggaran",
     icon: Wallet,
