@@ -1249,8 +1249,8 @@ export async function getDashboardRekapan() {
 
 export type MenuNonAPBNRowData = {
   id: string;
-  target: number;
-  realisasi: number;
+  realisasi_paket: number;
+  realisasi_orang: number;
 };
 
 export async function getMenuNonAPBN() {
@@ -1270,8 +1270,8 @@ export async function simpanBulkMenuNonAPBN(payload: MenuNonAPBNRowData[]) {
     
     for (const item of payload) {
       await sql`
-        INSERT INTO non_apbn (id, target, realisasi)
-        VALUES (${item.id}, ${item.target}, ${item.realisasi})
+        INSERT INTO non_apbn (id, realisasi_paket, realisasi_orang)
+        VALUES (${item.id}, ${item.realisasi_paket}, ${item.realisasi_orang})
       `;
     }
     return { success: true };

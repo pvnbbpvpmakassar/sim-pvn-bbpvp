@@ -20,7 +20,7 @@ export default function MenuNonAPBNPage() {
   const closeModal = () => setModal((prev) => ({ ...prev, isOpen: false }));
 
   // --- Fungsi Utilitas Kalkulasi ---
-  const hitungPersen = (realisasi: number, target: number) => (target > 0 ? ((realisasi / target) * 100).toFixed(2) : "0.00");
+  const hitungPersen = (orang: number, paket: number) => (paket > 0 ? ((orang / paket) * 100).toFixed(2) : "0.00");
   const formatInputAngka = (value: number) => (value === 0 ? "" : new Intl.NumberFormat("id-ID").format(value));
 
   useEffect(() => {
@@ -37,14 +37,14 @@ export default function MenuNonAPBNPage() {
     fetchData();
   }, []);
 
-  const handleAngkaChange = (valStr: string, id: string, field: "target" | "realisasi") => {
+  const handleAngkaChange = (valStr: string, id: string, field: "realisasi_paket" | "realisasi_orang") => {
     const rawValue = valStr.replace(/[^0-9]/g, "");
     const numValue = rawValue ? parseInt(rawValue, 10) : 0;
     setRows(rows.map((row) => (row.id === id ? { ...row, [field]: numValue } : row)));
   };
 
   const tambahBaris = () => {
-    setRows([...rows, { id: crypto.randomUUID(), target: 0, realisasi: 0 }]);
+    setRows([...rows, { id: crypto.randomUUID(), realisasi_paket: 0, realisasi_orang: 0 }]);
   };
 
   const hapusBaris = (id: string) => {
@@ -79,7 +79,7 @@ export default function MenuNonAPBNPage() {
     const result = await simpanBulkMenuNonAPBN(rows);
 
     if (result.success) {
-      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Menu Non-APBN berhasil disimpan ke Database!" });
+      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Menu NON-APBN berhasil disimpan ke Database!" });
     } else {
       setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan saat menyimpan: ${result.error}` });
     }
@@ -93,12 +93,12 @@ export default function MenuNonAPBNPage() {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Menu Non-APBN");
+    const worksheet = workbook.addWorksheet("Menu NonAPBN");
 
     worksheet.columns = [
       { header: "NO.", key: "no", width: 8 },
-      { header: "TARGET", key: "target", width: 25 },
-      { header: "REALISASI", key: "realisasi", width: 25 },
+      { header: "REALISASI PAKET", key: "realisasi_paket", width: 25 },
+      { header: "REALISASI ORANG", key: "realisasi_orang", width: 25 },
       { header: "PERSEN (%)", key: "persen", width: 15 },
     ];
 
@@ -127,18 +127,18 @@ export default function MenuNonAPBNPage() {
       };
     });
 
-    let totalTarget = 0;
-    let totalRealisasi = 0;
+    let totalPaket = 0;
+    let totalOrang = 0;
 
     rows.forEach((row, index) => {
-      totalTarget += row.target;
-      totalRealisasi += row.realisasi;
-      const persen = hitungPersen(row.realisasi, row.target);
+      totalPaket += row.realisasi_paket;
+      totalOrang += row.realisasi_orang;
+      const persen = hitungPersen(row.realisasi_orang, row.realisasi_paket);
 
       const excelRow = worksheet.addRow({
         no: index + 1,
-        target: row.target,
-        realisasi: row.realisasi,
+        realisasi_paket: row.realisasi_paket,
+        realisasi_orang: row.realisasi_orang,
         persen: `${persen}%`,
       });
       applyBorder(excelRow);
@@ -146,9 +146,9 @@ export default function MenuNonAPBNPage() {
 
     const totalRow = worksheet.addRow({
       no: "JUMLAH TOTAL",
-      target: totalTarget,
-      realisasi: totalRealisasi,
-      persen: `${hitungPersen(totalRealisasi, totalTarget)}%`,
+      realisasi_paket: totalPaket,
+      realisasi_orang: totalOrang,
+      persen: `${hitungPersen(totalOrang, totalPaket)}%`,
     });
 
     totalRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -164,15 +164,15 @@ export default function MenuNonAPBNPage() {
       else cell.alignment = { vertical: "middle", horizontal: "center" };
     });
 
-    worksheet.mergeCells(`A${totalRow.number}:A${totalRow.number}`); // Merapikan kolom No
+    worksheet.mergeCells(`A${totalRow.number}:A${totalRow.number}`);
 
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), "Data_Menu_NonAPBN.xlsx");
   };
 
-  const grandTotalTarget = rows.reduce((sum, row) => sum + (row.target || 0), 0);
-  const grandTotalRealisasi = rows.reduce((sum, row) => sum + (row.realisasi || 0), 0);
-  const grandTotalPersen = hitungPersen(grandTotalRealisasi, grandTotalTarget);
+  const grandTotalPaket = rows.reduce((sum, row) => sum + (row.realisasi_paket || 0), 0);
+  const grandTotalOrang = rows.reduce((sum, row) => sum + (row.realisasi_orang || 0), 0);
+  const grandTotalPersen = hitungPersen(grandTotalOrang, grandTotalPaket);
 
   if (isLoading) {
     return (
@@ -191,7 +191,7 @@ export default function MenuNonAPBNPage() {
   }
 
   return (
-    <div className="space-y-6 relative mx-auto">
+    <div className="space-y-6 relative max-w-5xl mx-auto">
       <AnimatePresence>
         {modal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -208,11 +208,17 @@ export default function MenuNonAPBNPage() {
               <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
                 {modal.type === "confirm" ? (
                   <>
-                    <button onClick={closeModal} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">Batal</button>
-                    <button onClick={modal.onConfirm} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-[#15406A] hover:bg-blue-900">Ya, Lanjutkan</button>
+                    <button onClick={closeModal} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
+                      Batal
+                    </button>
+                    <button onClick={modal.onConfirm} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-[#15406A] hover:bg-blue-900">
+                      Ya, Lanjutkan
+                    </button>
                   </>
                 ) : (
-                  <button onClick={closeModal} className={`px-5 py-2.5 rounded-lg text-sm font-medium text-white ${modal.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>Tutup</button>
+                  <button onClick={closeModal} className={`px-5 py-2.5 rounded-lg text-sm font-medium text-white ${modal.type === "error" ? "bg-red-600" : "bg-emerald-600"}`}>
+                    Tutup
+                  </button>
                 )}
               </div>
             </motion.div>
@@ -222,7 +228,7 @@ export default function MenuNonAPBNPage() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#15406A]">NON-APBN</h1>
+          <h1 className="text-2xl font-bold text-[#15406A]">Menu NON-APBN</h1>
           <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi khusus secara independen.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -248,8 +254,8 @@ export default function MenuNonAPBNPage() {
             <thead className="bg-[#15406A] text-white">
               <tr>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-16">NO.</th>
-                <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Target</th>
-                <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Realisasi</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Realisasi Paket</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Realisasi Orang</th>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-32">Persen (%)</th>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-24">Aksi</th>
               </tr>
@@ -269,8 +275,8 @@ export default function MenuNonAPBNPage() {
                       <td className="border-r border-gray-200 p-0">
                         <input
                           type="text"
-                          value={formatInputAngka(row.target)}
-                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "target")}
+                          value={formatInputAngka(row.realisasi_paket)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi_paket")}
                           placeholder="0"
                           className="w-full h-full px-4 py-3 text-center font-semibold bg-transparent outline-none focus:bg-white"
                         />
@@ -278,15 +284,13 @@ export default function MenuNonAPBNPage() {
                       <td className="border-r border-gray-200 p-0">
                         <input
                           type="text"
-                          value={formatInputAngka(row.realisasi)}
-                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi")}
+                          value={formatInputAngka(row.realisasi_orang)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi_orang")}
                           placeholder="0"
                           className="w-full h-full px-4 py-3 text-center font-semibold bg-transparent outline-none focus:bg-white"
                         />
                       </td>
-                      <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">
-                        {hitungPersen(row.realisasi, row.target)}%
-                      </td>
+                      <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">{hitungPersen(row.realisasi_orang, row.realisasi_paket)}%</td>
                       <td className="px-4 py-2 text-center">
                         <button onClick={() => hapusBaris(row.id)} title="Hapus Baris" className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
                           <Trash2 className="w-4 h-4" />
@@ -301,8 +305,8 @@ export default function MenuNonAPBNPage() {
               <tfoot className="bg-amber-400 text-white font-bold tracking-wide">
                 <tr>
                   <td className="border border-[#1a4e82] px-4 py-4 text-right uppercase">Total</td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-[15px]">{formatInputAngka(grandTotalTarget)}</td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-emerald-100 text-[15px]">{formatInputAngka(grandTotalRealisasi)}</td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-[15px]">{formatInputAngka(grandTotalPaket)}</td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-emerald-100 text-[15px]">{formatInputAngka(grandTotalOrang)}</td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-900 text-base">{grandTotalPersen}%</td>
                   <td className="border border-[#1a4e82] bg-amber-400"></td>
                 </tr>
@@ -313,7 +317,7 @@ export default function MenuNonAPBNPage() {
 
         <div className="bg-gray-50 p-4 border-t border-gray-200">
           <button onClick={tambahBaris} className="flex items-center gap-2 text-sm font-bold text-[#15406A] hover:text-blue-800 transition-colors">
-            <Plus className="w-5 h-5" /> Tambah Baris Target
+            <Plus className="w-5 h-5" /> Tambah Baris Data
           </button>
         </div>
       </div>
