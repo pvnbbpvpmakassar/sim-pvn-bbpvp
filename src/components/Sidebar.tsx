@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { LayoutDashboard, Briefcase, FileText, ChevronDown, LogOut, X, Wallet } from "lucide-react";
 import { logout } from "../app/actions/auth";
+import LogoBBPVP from "../../public/logo-bbpvp-makassar.png";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -56,8 +57,8 @@ const menuItems = [
     })),
   },
     {
-    name: "Menu Dummy?",
-    href: "/admin/menu-dummy",
+    name: "NON APBN",
+    href: "/admin/non-apbn",
     icon: LayoutDashboard,
   },
   {
@@ -195,7 +196,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   shadow-lg shadow-black/10
                 "
               >
-                <Image src="/logo-bbpvp-makassar.png" alt="Logo BBPVP Makassar" width={64} height={64} priority className="h-full w-full object-contain" />
+                <Image src={ LogoBBPVP } alt="Logo BBPVP Makassar" width={64} height={64} priority className="h-full w-full object-contain" />
               </motion.div>
 
               <div className="min-w-0">

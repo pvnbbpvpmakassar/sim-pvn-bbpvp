@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import NextTopLoader from 'nextjs-toploader';
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -23,7 +25,19 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <NextTopLoader 
+          color="#10B981" // Warna hijau emerald (bisa diganti sesuai tema)
+          initialPosition={0.08} 
+          crawlSpeed={200} 
+          height={4} 
+          crawl={true} 
+          showSpinner={false} // Matikan spinner melingkar di pojok kanan agar lebih bersih
+          easing="ease" 
+          speed={200} 
+          shadow="0 0 10px #10B981,0 0 5px #10B981" 
+        />
+        {children}</body>
     </html>
   );
 }

@@ -1244,40 +1244,39 @@ export async function getDashboardRekapan() {
 
 
 // ============================================================
-// MODUL MENU DUMMY (INDEPENDEN)
+// MODUL non_apbn (INDEPENDEN)
 // ============================================================
 
-export type MenuDummyRowData = {
+export type MenuNonAPBNRowData = {
   id: string;
-  nama: string;
   target: number;
   realisasi: number;
 };
 
-export async function getMenuDummy() {
+export async function getMenuNonAPBN() {
   try {
-    const data = await sql`SELECT * FROM menu_dummy ORDER BY created_at ASC`;
-    return { success: true, data: data as MenuDummyRowData[] };
+    const data = await sql`SELECT * FROM non_apbn ORDER BY created_at ASC`;
+    return { success: true, data: data as MenuNonAPBNRowData[] };
   } catch (error: unknown) {
     if (error instanceof Error) return { success: false, error: error.message };
     return { success: false, error: "Gagal mengambil data dari database" };
   }
 }
 
-export async function simpanBulkMenuDummy(payload: MenuDummyRowData[]) {
+export async function simpanBulkMenuNonAPBN(payload: MenuNonAPBNRowData[]) {
   try {
     // Pendekatan sinkronisasi penuh: Hapus data lama, masukkan data baru dari UI
-    await sql`DELETE FROM menu_dummy`;
+    await sql`DELETE FROM non_apbn`;
     
     for (const item of payload) {
       await sql`
-        INSERT INTO menu_dummy (id, nama, target, realisasi)
-        VALUES (${item.id}, ${item.nama}, ${item.target}, ${item.realisasi})
+        INSERT INTO non_apbn (id, target, realisasi)
+        VALUES (${item.id}, ${item.target}, ${item.realisasi})
       `;
     }
     return { success: true };
   } catch (error: unknown) {
     if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Terjadi kesalahan saat menyimpan data Menu Dummy." };
+    return { success: false, error: "Terjadi kesalahan saat menyimpan data NON APBN." };
   }
 }

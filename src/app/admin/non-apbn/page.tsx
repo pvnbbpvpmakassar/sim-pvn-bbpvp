@@ -6,13 +6,13 @@ import { Save, Download, Trash2, Plus, AlertCircle, RefreshCw, CheckCircle } fro
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-// Impor fungsi Server Action yang baru dibuat
-import { getMenuDummy, simpanBulkMenuDummy, MenuDummyRowData } from "@/app/actions/data";
+// Impor fungsi Server Action
+import { getMenuNonAPBN, simpanBulkMenuNonAPBN, MenuNonAPBNRowData } from "@/app/actions/data";
 
 type ModalConfig = { isOpen: boolean; type: "confirm" | "success" | "error"; title: string; message: string; onConfirm?: () => void };
 
-export default function MenuDummyPage() {
-  const [rows, setRows] = useState<MenuDummyRowData[]>([]);
+export default function MenuNonAPBNPage() {
+  const [rows, setRows] = useState<MenuNonAPBNRowData[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -21,11 +21,12 @@ export default function MenuDummyPage() {
 
   // --- Fungsi Utilitas Kalkulasi ---
   const hitungPersen = (realisasi: number, target: number) => (target > 0 ? ((realisasi / target) * 100).toFixed(2) : "0.00");
+  const formatInputAngka = (value: number) => (value === 0 ? "" : new Intl.NumberFormat("id-ID").format(value));
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      const response = await getMenuDummy();
+      const response = await getMenuNonAPBN();
       if (response.success && response.data) {
         setRows(response.data);
       } else {
@@ -36,8 +37,14 @@ export default function MenuDummyPage() {
     fetchData();
   }, []);
 
+  const handleAngkaChange = (valStr: string, id: string, field: "target" | "realisasi") => {
+    const rawValue = valStr.replace(/[^0-9]/g, "");
+    const numValue = rawValue ? parseInt(rawValue, 10) : 0;
+    setRows(rows.map((row) => (row.id === id ? { ...row, [field]: numValue } : row)));
+  };
+
   const tambahBaris = () => {
-    setRows([...rows, { id: crypto.randomUUID(), nama: "", target: 0, realisasi: 0 }]);
+    setRows([...rows, { id: crypto.randomUUID(), target: 0, realisasi: 0 }]);
   };
 
   const hapusBaris = (id: string) => {
@@ -67,16 +74,12 @@ export default function MenuDummyPage() {
     });
   };
 
-  const updateBaris = (id: string, field: keyof MenuDummyRowData, value: string | number) => {
-    setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
-  };
-
   const simpanData = async () => {
     setIsSaving(true);
-    const result = await simpanBulkMenuDummy(rows);
+    const result = await simpanBulkMenuNonAPBN(rows);
 
     if (result.success) {
-      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Menu Dummy berhasil disimpan ke Database!" });
+      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Menu Non-APBN berhasil disimpan ke Database!" });
     } else {
       setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan saat menyimpan: ${result.error}` });
     }
@@ -90,13 +93,12 @@ export default function MenuDummyPage() {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Menu Dummy");
+    const worksheet = workbook.addWorksheet("Menu Non-APBN");
 
     worksheet.columns = [
       { header: "NO.", key: "no", width: 8 },
-      { header: "NAMA", key: "nama", width: 45 },
-      { header: "TARGET", key: "target", width: 18 },
-      { header: "REALISASI", key: "realisasi", width: 18 },
+      { header: "TARGET", key: "target", width: 25 },
+      { header: "REALISASI", key: "realisasi", width: 25 },
       { header: "PERSEN (%)", key: "persen", width: 15 },
     ];
 
@@ -110,8 +112,6 @@ export default function MenuDummyPage() {
         };
         cell.alignment = { vertical: "middle", horizontal: "center" };
       });
-      const namaCell = row.getCell(2);
-      if (namaCell) namaCell.alignment = { vertical: "middle", horizontal: "left" };
     };
 
     const headerRow = worksheet.getRow(1);
@@ -137,7 +137,6 @@ export default function MenuDummyPage() {
 
       const excelRow = worksheet.addRow({
         no: index + 1,
-        nama: row.nama,
         target: row.target,
         realisasi: row.realisasi,
         persen: `${persen}%`,
@@ -146,8 +145,7 @@ export default function MenuDummyPage() {
     });
 
     const totalRow = worksheet.addRow({
-      no: "",
-      nama: "JUMLAH TOTAL",
+      no: "JUMLAH TOTAL",
       target: totalTarget,
       realisasi: totalRealisasi,
       persen: `${hitungPersen(totalRealisasi, totalTarget)}%`,
@@ -162,14 +160,14 @@ export default function MenuDummyPage() {
         bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
         right: { style: "thin", color: { argb: "FFFFFFFF" } },
       };
-      if (colNumber === 2) cell.alignment = { vertical: "middle", horizontal: "right" };
+      if (colNumber === 1) cell.alignment = { vertical: "middle", horizontal: "right" };
       else cell.alignment = { vertical: "middle", horizontal: "center" };
     });
 
-    worksheet.mergeCells(`A${totalRow.number}:B${totalRow.number}`);
+    worksheet.mergeCells(`A${totalRow.number}:A${totalRow.number}`); // Merapikan kolom No
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), "Data_Menu_Dummy.xlsx");
+    saveAs(new Blob([buffer]), "Data_Menu_NonAPBN.xlsx");
   };
 
   const grandTotalTarget = rows.reduce((sum, row) => sum + (row.target || 0), 0);
@@ -186,14 +184,14 @@ export default function MenuDummyPage() {
           <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
-        <p className="text-sm font-semibold text-[#15406A]">Memuat Menu Dummy</p>
+        <p className="text-sm font-semibold text-[#15406A]">Memuat Menu NON-APBN</p>
         <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6 relative mx-auto">
       <AnimatePresence>
         {modal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -224,8 +222,8 @@ export default function MenuDummyPage() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#15406A]">Menu Dummy (Independen)</h1>
-          <p className="text-gray-500 text-sm mt-1">Kelola data terpisah yang tidak terikat dengan ABT maupun NON-ABT.</p>
+          <h1 className="text-2xl font-bold text-[#15406A]">NON-APBN</h1>
+          <p className="text-gray-500 text-sm mt-1">Kelola data target dan realisasi khusus secara independen.</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={handleDownloadExcel} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg font-medium transition-colors border border-emerald-200">
@@ -250,9 +248,8 @@ export default function MenuDummyPage() {
             <thead className="bg-[#15406A] text-white">
               <tr>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-16">NO.</th>
-                <th className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">Nama / Keterangan</th>
-                <th className="border border-[#1a4e82] px-4 py-3 text-center w-48">Target</th>
-                <th className="border border-[#1a4e82] px-4 py-3 text-center w-48">Realisasi</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Target</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Realisasi</th>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-32">Persen (%)</th>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-24">Aksi</th>
               </tr>
@@ -260,7 +257,7 @@ export default function MenuDummyPage() {
             <tbody className="text-gray-700">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400 font-medium">
+                  <td colSpan={5} className="px-4 py-12 text-center text-gray-400 font-medium">
                     Tabel masih kosong. Klik Tambah Baris untuk memulai.
                   </td>
                 </tr>
@@ -268,32 +265,23 @@ export default function MenuDummyPage() {
                 rows.map((row, index) => {
                   return (
                     <tr key={row.id} className="border-b border-gray-200 hover:bg-blue-50/30 transition-colors">
-                      <td className="border-r border-gray-200 px-4 py-2 text-center">{index + 1}</td>
+                      <td className="border-r border-gray-200 px-4 py-2 text-center font-bold text-gray-500">{index + 1}</td>
                       <td className="border-r border-gray-200 p-0">
-                        <input 
-                          type="text" 
-                          value={row.nama} 
-                          onChange={(e) => updateBaris(row.id, "nama", e.target.value)} 
-                          className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white font-medium" 
-                          placeholder="Masukkan nama..." 
+                        <input
+                          type="text"
+                          value={formatInputAngka(row.target)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "target")}
+                          placeholder="0"
+                          className="w-full h-full px-4 py-3 text-center font-semibold bg-transparent outline-none focus:bg-white"
                         />
                       </td>
                       <td className="border-r border-gray-200 p-0">
                         <input
-                          type="number"
-                          value={row.target === 0 ? "" : row.target}
-                          onChange={(e) => updateBaris(row.id, "target", Number(e.target.value))}
+                          type="text"
+                          value={formatInputAngka(row.realisasi)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi")}
                           placeholder="0"
-                          className="w-full h-full px-4 py-3 text-center bg-transparent outline-none focus:bg-white"
-                        />
-                      </td>
-                      <td className="border-r border-gray-200 p-0">
-                        <input
-                          type="number"
-                          value={row.realisasi === 0 ? "" : row.realisasi}
-                          onChange={(e) => updateBaris(row.id, "realisasi", Number(e.target.value))}
-                          placeholder="0"
-                          className="w-full h-full px-4 py-3 text-center bg-transparent outline-none focus:bg-white"
+                          className="w-full h-full px-4 py-3 text-center font-semibold bg-transparent outline-none focus:bg-white"
                         />
                       </td>
                       <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">
@@ -312,10 +300,10 @@ export default function MenuDummyPage() {
             {rows.length > 0 && (
               <tfoot className="bg-amber-400 text-white font-bold tracking-wide">
                 <tr>
-                  <td colSpan={2} className="border border-[#1a4e82] px-4 py-4 text-right uppercase">Jumlah Total</td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500">{grandTotalTarget}</td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-emerald-300">{grandTotalRealisasi}</td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-200">{grandTotalPersen}%</td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-right uppercase">Total</td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-[15px]">{formatInputAngka(grandTotalTarget)}</td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-emerald-100 text-[15px]">{formatInputAngka(grandTotalRealisasi)}</td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-900 text-base">{grandTotalPersen}%</td>
                   <td className="border border-[#1a4e82] bg-amber-400"></td>
                 </tr>
               </tfoot>
@@ -325,13 +313,13 @@ export default function MenuDummyPage() {
 
         <div className="bg-gray-50 p-4 border-t border-gray-200">
           <button onClick={tambahBaris} className="flex items-center gap-2 text-sm font-bold text-[#15406A] hover:text-blue-800 transition-colors">
-            <Plus className="w-5 h-5" /> Tambah Baris
+            <Plus className="w-5 h-5" /> Tambah Baris Target
           </button>
         </div>
       </div>
 
       <div className="flex justify-end pt-4">
-        <motion.button onClick={simpanData} disabled={isSaving} className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold transition-all disabled:opacity-70">
+        <motion.button onClick={simpanData} disabled={isSaving} className="flex items-center gap-2 bg-[#15406A] hover:bg-[#0f2f4e] text-white px-8 py-3 rounded-xl font-bold transition-all disabled:opacity-70 shadow-lg">
           {isSaving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="w-5 h-5" />}
           {isSaving ? "Menyimpan..." : "Simpan Data"}
         </motion.button>

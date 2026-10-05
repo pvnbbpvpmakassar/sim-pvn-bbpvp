@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { login } from "../actions/auth";
+import LogoKemnaker from "../../../public/logo-kemnaker.png";
+import LogoBBPVP from "../../../public/logo-bbpvp-makassar.png";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -133,7 +135,7 @@ export default function LoginPage() {
                   }}
                   className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/50 bg-white p-2 shadow-lg shadow-black/10"
                 >
-                  <Image src="/logo-kemnaker.png" alt="Kementerian Ketenagakerjaan" width={60} height={60} priority className="h-full w-full object-contain" />
+                  <Image src={LogoKemnaker} alt="Kementerian Ketenagakerjaan" width={60} height={60} priority className="h-full w-full object-contain" />
                 </motion.div>
 
                 {/* Text */}
@@ -189,7 +191,7 @@ export default function LoginPage() {
                   }}
                   className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/50 bg-white p-2 shadow-lg shadow-black/10"
                 >
-                  <Image src="/logo-bbpvp-makassar.png" alt="BBPVP Makassar" width={60} height={60} priority className="h-full w-full object-contain" />
+                  <Image src={LogoBBPVP} alt="BBPVP Makassar" width={60} height={60} priority className="h-full w-full object-contain" />
                 </motion.div>
 
                 {/* Text */}
