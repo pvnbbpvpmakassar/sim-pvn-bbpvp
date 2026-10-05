@@ -7,7 +7,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { LayoutDashboard, Briefcase, FileText, ChevronDown, LogOut, X, Wallet } from "lucide-react";
 import { logout } from "../app/actions/auth";
-import LogoBBPVP from "../../public/logo-bbpvp-makassar.png";
+import LogoBBPVP from "@/assets/logo-bbpvp-makassar.png";
+
 
 interface SidebarProps {
   isOpen: boolean;

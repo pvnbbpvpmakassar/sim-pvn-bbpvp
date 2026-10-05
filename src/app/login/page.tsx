@@ -6,8 +6,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { login } from "../actions/auth";
-import LogoKemnaker from "../../../public/logo-kemnaker.png";
-import LogoBBPVP from "../../../public/logo-bbpvp-makassar.png";
+
+import LogoBBPVP from "@/assets/logo-bbpvp-makassar.png";
+import LogoKemnaker from "@/assets/logo-kemnaker.png";
 
 export default function LoginPage() {
   const router = useRouter();
