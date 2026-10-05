@@ -79,7 +79,7 @@ export default function MenuNonAPBNPage() {
     const result = await simpanBulkMenuNonAPBN(rows);
 
     if (result.success) {
-      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Menu NON-APBN berhasil disimpan ke Database!" });
+      setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Menu Non-APBN berhasil disimpan ke Database!" });
     } else {
       setModal({ isOpen: true, type: "error", title: "Gagal", message: `Terjadi kesalahan saat menyimpan: ${result.error}` });
     }
@@ -191,7 +191,7 @@ export default function MenuNonAPBNPage() {
   }
 
   return (
-    <div className="space-y-6 relative max-w-5xl mx-auto">
+    <div className="space-y-6 relative mx-auto">
       <AnimatePresence>
         {modal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
