@@ -50,18 +50,14 @@ const menuItems = [
     })),
   },
   {
-    name: "NON ABT",
+    name: "Non ABT",
     icon: FileText,
     submenus: nonAbtSubMenuList.map((sub) => ({
       name: sub.name,
       href: `/admin/non-abt/${sub.slug}`,
     })),
   },
-    {
-    name: "NON APBN",
-    href: "/admin/non-apbn",
-    icon: LayoutDashboard,
-  },
+
   {
     name: "Anggaran",
     icon: Wallet,
@@ -75,6 +71,11 @@ const menuItems = [
         href: "/admin/anggaran/rincian",
       },
     ],
+  },
+      {
+    name: "Non APBN",
+    href: "/admin/non-apbn",
+    icon: LayoutDashboard,
   },
 ];
 
