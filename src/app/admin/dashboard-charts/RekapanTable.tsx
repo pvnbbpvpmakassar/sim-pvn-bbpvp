@@ -18,7 +18,6 @@ interface RekapanTableProps {
 export default function RekapanTable({ data }: RekapanTableProps) {
   const [lainnyaData, setLainnyaData] = useState<AlokasiRowData[]>([]);
 
-  // Menarik data "Anggaran Lainnya" dari database saat tabel rekap dimuat
   useEffect(() => {
     const fetchLainnya = async () => {
       const res = await getAlokasiAnggaran();
@@ -29,11 +28,9 @@ export default function RekapanTable({ data }: RekapanTableProps) {
     fetchLainnya();
   }, []);
 
-  // --- Fungsi Utilitas ---
-  const hitungPersen = (realisasi: number, orang: number) => orang > 0 ? ((realisasi / orang) * 100).toFixed(2) : "0.00";
+  const hitungPersen = (realisasi: number, target: number) => target > 0 ? ((realisasi / target) * 100).toFixed(2) : "0.00";
   const formatRp = (value: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(value);
 
-  // --- Pre-Kalkulasi Total Keseluruhan Modul ---
   let grandTotalAbtP = 0, grandTotalAbtO = 0, grandTotalAbtR = 0, grandTotalAbtA = 0;
   let grandTotalNonP = 0, grandTotalNonO = 0, grandTotalNonR = 0, grandTotalNonA = 0;
 
@@ -57,7 +54,6 @@ export default function RekapanTable({ data }: RekapanTableProps) {
   const totalLainnya = lainnyaData.reduce((sum, item) => sum + item.anggaran, 0);
   const superGrandTotal = totalModul + totalLainnya;
 
-  // --- Fungsi Download Excel ---
   const handleDownloadExcel = async () => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Rekapan Dashboard");
@@ -125,8 +121,8 @@ export default function RekapanTable({ data }: RekapanTableProps) {
 
         const pRow = worksheet.addRow([
           globalNo++, row.kode, row.ro,
-          isProd ? "-" : abtP, abtO, isProd ? "-" : abtR, isProd ? "-" : `${hitungPersen(abtR, abtO)}%`, abtA,
-          isProd ? "-" : nonP, nonO, isProd ? "-" : nonR, isProd ? "-" : `${hitungPersen(nonR, nonO)}%`, nonA,
+          isProd ? "-" : abtP, abtO, abtR, `${hitungPersen(abtR, abtO)}%`, abtA,
+          isProd ? "-" : nonP, nonO, nonR, `${hitungPersen(nonR, nonO)}%`, nonA,
           abtA + nonA
         ]);
         applyBorder(pRow, [8, 13, 14]);
@@ -135,8 +131,8 @@ export default function RekapanTable({ data }: RekapanTableProps) {
         row.subRows.forEach(sub => {
           const sRow = worksheet.addRow([
             "", sub.kode, `    ↳ ${sub.ro}`,
-            isProd ? "-" : sub.abt.paket, sub.abt.orang, isProd ? "-" : sub.abt.realisasiOrang, isProd ? "-" : `${hitungPersen(sub.abt.realisasiOrang, sub.abt.orang)}%`, sub.abt.anggaran,
-            isProd ? "-" : sub.nonAbt.paket, sub.nonAbt.orang, isProd ? "-" : sub.nonAbt.realisasiOrang, isProd ? "-" : `${hitungPersen(sub.nonAbt.realisasiOrang, sub.nonAbt.orang)}%`, sub.nonAbt.anggaran,
+            isProd ? "-" : sub.abt.paket, sub.abt.orang, sub.abt.realisasiOrang, `${hitungPersen(sub.abt.realisasiOrang, sub.abt.orang)}%`, sub.abt.anggaran,
+            isProd ? "-" : sub.nonAbt.paket, sub.nonAbt.orang, sub.nonAbt.realisasiOrang, `${hitungPersen(sub.nonAbt.realisasiOrang, sub.nonAbt.orang)}%`, sub.nonAbt.anggaran,
             sub.abt.anggaran + sub.nonAbt.anggaran
           ]);
           applyBorder(sRow, [8, 13, 14]);
@@ -145,8 +141,8 @@ export default function RekapanTable({ data }: RekapanTableProps) {
 
       const tRow = worksheet.addRow([
         "", "", `TOTAL ${group.groupName.toUpperCase()}`,
-        isProd ? "-" : gAbtP, gAbtO, isProd ? "-" : gAbtR, isProd ? "-" : `${hitungPersen(gAbtR, gAbtO)}%`, gAbtA,
-        isProd ? "-" : gNonP, gNonO, isProd ? "-" : gNonR, isProd ? "-" : `${hitungPersen(gNonR, gNonO)}%`, gNonA,
+        isProd ? "-" : gAbtP, gAbtO, gAbtR, `${hitungPersen(gAbtR, gAbtO)}%`, gAbtA,
+        isProd ? "-" : gNonP, gNonO, gNonR, `${hitungPersen(gNonR, gNonO)}%`, gNonA,
         gAbtA + gNonA
       ]);
       worksheet.mergeCells(`A${tRow.number}:C${tRow.number}`);
@@ -158,7 +154,6 @@ export default function RekapanTable({ data }: RekapanTableProps) {
       worksheet.addRow([]);
     });
 
-    // Excel Total Modul
     const modulGrandRow = worksheet.addRow([
       "", "", "TOTAL KESELURUHAN (MODUL)",
       grandTotalAbtP, grandTotalAbtO, grandTotalAbtR, `${hitungPersen(grandTotalAbtR, grandTotalAbtO)}%`, grandTotalAbtA,
@@ -171,10 +166,8 @@ export default function RekapanTable({ data }: RekapanTableProps) {
       cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
       cell.alignment = { vertical: "middle", horizontal: [8, 13, 14].includes(colNum as number) ? "right" : "center" };
     });
-
     worksheet.addRow([]);
 
-    // Excel Lainnya
     if (lainnyaData.length > 0) {
       const titleLainnya = worksheet.addRow(["", "", "ANGGARAN LAINNYA", "", "", "", "", "", "", "", "", "", "", ""]);
       worksheet.mergeCells(`A${titleLainnya.number}:N${titleLainnya.number}`);
@@ -192,8 +185,6 @@ export default function RekapanTable({ data }: RekapanTableProps) {
     }
 
     worksheet.addRow([]);
-
-    // Excel Super Grand Total
     const superRow = worksheet.addRow(["", "", "GRAND TOTAL KESELURUHAN ANGGARAN (MODUL + LAINNYA)", "", "", "", "", "", "", "", "", "", "", superGrandTotal]);
     worksheet.mergeCells(`A${superRow.number}:M${superRow.number}`);
     superRow.eachCell({ includeEmpty: true }, (cell, col) => {
@@ -209,11 +200,14 @@ export default function RekapanTable({ data }: RekapanTableProps) {
   let globalRowNumber = 1;
 
   // =========================================================================
-  // RENDERER: TABEL STANDAR (Sertifikasi & UPTP)
+  // RENDERER: TABEL STANDAR (14 KOLOM UNTUK SEMUA MODUL)
   // =========================================================================
   const renderStandardGroup = (group: DashboardGroupData) => {
     let groupAbtP = 0, groupAbtO = 0, groupAbtR = 0, groupAbtA = 0;
     let groupNonP = 0, groupNonO = 0, groupNonR = 0, groupNonA = 0;
+    
+    // Deteksi jika modul ini Produktivitas
+    const isProd = group.groupName.toLowerCase() === "produktivitas";
 
     return (
       <div key={group.groupName} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
@@ -226,7 +220,7 @@ export default function RekapanTable({ data }: RekapanTableProps) {
               <tr>
                 <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-12">NO.</th>
                 <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 w-32">KODE</th>
-                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">Rincian Output (RO)</th>
+                <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 w-[300px]">Rincian Output (RO)</th>
                 <th colSpan={5} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c]">ABT</th>
                 <th colSpan={5} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#153a5e]">NON-ABT</th>
                 <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-40 bg-[#12304d]">Total Anggaran</th>
@@ -235,17 +229,18 @@ export default function RekapanTable({ data }: RekapanTableProps) {
                 <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#2060a0]">Target</th>
                 <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#2060a0] w-24">Realisasi Orang</th>
                 <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#2060a0] w-24">Persentase (%)</th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#2060a0] w-32">Anggaran (Rp.)</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#2060a0] w-40">Anggaran (Rp.)</th>
                 
                 <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#194269]">Target</th>
                 <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#194269] w-24">Realisasi Orang</th>
                 <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#194269] w-24">Persentase (%)</th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#194269] w-32">Anggaran (Rp.)</th>
+                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#194269] w-40">Anggaran (Rp.)</th>
               </tr>
               <tr>
-                <th className="border border-[#1a4e82] px-3 py-2 text-center bg-[#2870b8] w-16">Paket</th>
+                {/* Jika Produktivitas, kolom paket diganti strip (-) di Thead */}
+                <th className="border border-[#1a4e82] px-3 py-2 text-center bg-[#2870b8] w-16">{isProd ? "-" : "Paket"}</th>
                 <th className="border border-[#1a4e82] px-3 py-2 text-center bg-[#2870b8] w-16">Orang</th>
-                <th className="border border-[#1a4e82] px-3 py-2 text-center bg-[#1c4b78] w-16">Paket</th>
+                <th className="border border-[#1a4e82] px-3 py-2 text-center bg-[#1c4b78] w-16">{isProd ? "-" : "Paket"}</th>
                 <th className="border border-[#1a4e82] px-3 py-2 text-center bg-[#1c4b78] w-16">Orang</th>
               </tr>
             </thead>
@@ -275,13 +270,14 @@ export default function RekapanTable({ data }: RekapanTableProps) {
                       <td className="border-r border-gray-200 px-4 py-2">{row.kode}</td>
                       <td className="border-r border-gray-200 px-4 py-2">{row.ro}</td>
                       
-                      <td className="border-r border-gray-200 px-3 py-2 text-center">{abtP || "-"}</td>
+                      {/* Trik visual: ganti dengan strip jika Produktivitas */}
+                      <td className="border-r border-gray-200 px-3 py-2 text-center">{isProd ? "-" : (abtP || "-")}</td>
                       <td className="border-r border-gray-200 px-3 py-2 text-center">{abtO || "-"}</td>
                       <td className="border-r border-gray-200 px-3 py-2 text-center">{abtR || "-"}</td>
                       <td className="border-r border-gray-200 px-3 py-2 text-center">{hitungPersen(abtR, abtO)}%</td>
                       <td className="border-r border-gray-200 px-4 py-2 text-right">{abtA > 0 ? formatRp(abtA) : "-"}</td>
 
-                      <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50">{nonP || "-"}</td>
+                      <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50">{isProd ? "-" : (nonP || "-")}</td>
                       <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50">{nonO || "-"}</td>
                       <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50">{nonR || "-"}</td>
                       <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50">{hitungPersen(nonR, nonO)}%</td>
@@ -299,13 +295,13 @@ export default function RekapanTable({ data }: RekapanTableProps) {
                           <span className="pl-6">{sub.ro}</span>
                         </td>
 
-                        <td className="border-r border-gray-200 px-3 py-2 text-center text-gray-500">{sub.abt.paket || "-"}</td>
+                        <td className="border-r border-gray-200 px-3 py-2 text-center text-gray-500">{isProd ? "-" : (sub.abt.paket || "-")}</td>
                         <td className="border-r border-gray-200 px-3 py-2 text-center text-gray-500">{sub.abt.orang || "-"}</td>
                         <td className="border-r border-gray-200 px-3 py-2 text-center text-gray-500">{sub.abt.realisasiOrang || "-"}</td>
                         <td className="border-r border-gray-200 px-3 py-2 text-center text-[#15406A]">{hitungPersen(sub.abt.realisasiOrang, sub.abt.orang)}%</td>
                         <td className="border-r border-gray-200 px-4 py-2 text-right text-gray-600">{sub.abt.anggaran > 0 ? formatRp(sub.abt.anggaran) : "-"}</td>
 
-                        <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50 text-gray-500">{sub.nonAbt.paket || "-"}</td>
+                        <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50 text-gray-500">{isProd ? "-" : (sub.nonAbt.paket || "-")}</td>
                         <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50 text-gray-500">{sub.nonAbt.orang || "-"}</td>
                         <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50 text-gray-500">{sub.nonAbt.realisasiOrang || "-"}</td>
                         <td className="border-r border-gray-200 px-3 py-2 text-center bg-gray-50/50 text-[#15406A]">{hitungPersen(sub.nonAbt.realisasiOrang, sub.nonAbt.orang)}%</td>
@@ -322,118 +318,19 @@ export default function RekapanTable({ data }: RekapanTableProps) {
             <tfoot className="bg-amber-100 font-bold uppercase text-amber-900 border-b-2 border-white">
               <tr>
                 <td colSpan={3} className="border-r border-amber-200 px-4 py-3 text-right">TOTAL {group.groupName}</td>
-                <td className="border-r border-amber-200 px-3 py-3 text-center">{groupAbtP}</td>
+                <td className="border-r border-amber-200 px-3 py-3 text-center">{isProd ? "-" : groupAbtP}</td>
                 <td className="border-r border-amber-200 px-3 py-3 text-center">{groupAbtO}</td>
                 <td className="border-r border-amber-200 px-3 py-3 text-center">{groupAbtR}</td>
                 <td className="border-r border-amber-200 px-3 py-3 text-center">{hitungPersen(groupAbtR, groupAbtO)}%</td>
                 <td className="border-r border-amber-200 px-4 py-3 text-right">{formatRp(groupAbtA)}</td>
 
-                <td className="border-r border-amber-200 px-3 py-3 text-center bg-amber-200/40">{groupNonP}</td>
+                <td className="border-r border-amber-200 px-3 py-3 text-center bg-amber-200/40">{isProd ? "-" : groupNonP}</td>
                 <td className="border-r border-amber-200 px-3 py-3 text-center bg-amber-200/40">{groupNonO}</td>
                 <td className="border-r border-amber-200 px-3 py-3 text-center bg-amber-200/40">{groupNonR}</td>
                 <td className="border-r border-amber-200 px-3 py-3 text-center bg-amber-200/40">{hitungPersen(groupNonR, groupNonO)}%</td>
                 <td className="border-r border-amber-200 px-4 py-3 text-right bg-amber-200/40">{formatRp(groupNonA)}</td>
 
                 <td className="px-4 py-3 text-right bg-amber-400 text-white shadow-inner">{formatRp(groupAbtA + groupNonA)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  // =========================================================================
-  // RENDERER: TABEL PRODUKTIVITAS (Tanpa Paket, Realisasi, Persen)
-  // =========================================================================
-  const renderProduktivitasGroup = (group: DashboardGroupData) => {
-    let groupAbtO = 0, groupAbtA = 0;
-    let groupNonO = 0, groupNonA = 0;
-
-    return (
-      <div key={group.groupName} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-        <div className="bg-[#15406A] px-6 py-4 flex justify-between items-center">
-          <h2 className="text-lg font-bold text-white uppercase tracking-wide">{group.groupName}</h2>
-        </div>
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-sm text-left border-collapse min-w-max">
-            <thead className="bg-[#184878] text-white">
-              <tr>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center w-12">NO.</th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 w-32">KODE</th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">Rincian Output (RO)</th>
-                <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c]">ABT</th>
-                <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#153a5e]">NON-ABT</th>
-                <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center w-40 bg-[#12304d]">Total Anggaran</th>
-              </tr>
-              <tr>
-                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#2060a0] w-32">Target Orang</th>
-                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#2060a0] w-48">Anggaran (Rp.)</th>
-                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#194269] w-32">Target Orang</th>
-                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#194269] w-48">Anggaran (Rp.)</th>
-              </tr>
-            </thead>
-            <tbody className="text-gray-700">
-              {group.rows.map((row) => {
-                const hasSub = row.subRows.length > 0;
-                
-                const abtO = hasSub ? row.subRows.reduce((sum, s) => sum + s.abt.orang, 0) : row.abt.orang;
-                const abtA = hasSub ? row.subRows.reduce((sum, s) => sum + s.abt.anggaran, 0) : row.abt.anggaran;
-                
-                const nonO = hasSub ? row.subRows.reduce((sum, s) => sum + s.nonAbt.orang, 0) : row.nonAbt.orang;
-                const nonA = hasSub ? row.subRows.reduce((sum, s) => sum + s.nonAbt.anggaran, 0) : row.nonAbt.anggaran;
-
-                groupAbtO += abtO; groupAbtA += abtA;
-                groupNonO += nonO; groupNonA += nonA;
-
-                const curRowNumber = globalRowNumber++;
-
-                return (
-                  <Fragment key={row.id}>
-                    <tr className={`border-b border-gray-200 transition-colors ${hasSub ? 'bg-blue-50/40 font-semibold text-[#15406A]' : 'hover:bg-slate-50'}`}>
-                      <td className="border-r border-gray-200 px-4 py-3 text-center">{curRowNumber}</td>
-                      <td className="border-r border-gray-200 px-4 py-3">{row.kode}</td>
-                      <td className="border-r border-gray-200 px-4 py-3">{row.ro}</td>
-                      
-                      <td className="border-r border-gray-200 px-4 py-3 text-center">{abtO || "-"}</td>
-                      <td className="border-r border-gray-200 px-4 py-3 text-right">{abtA > 0 ? formatRp(abtA) : "-"}</td>
-
-                      <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50">{nonO || "-"}</td>
-                      <td className="border-r border-gray-200 px-4 py-3 text-right bg-gray-50/50">{nonA > 0 ? formatRp(nonA) : "-"}</td>
-
-                      <td className="px-4 py-3 text-right bg-amber-50/30 font-bold text-amber-800">{abtA + nonA > 0 ? formatRp(abtA + nonA) : "-"}</td>
-                    </tr>
-
-                    {row.subRows.map((sub) => (
-                      <tr key={sub.id} className="border-b border-gray-100 hover:bg-slate-50 transition-colors text-sm">
-                        <td className="border-r border-gray-200 px-4 py-2.5"></td>
-                        <td className="border-r border-gray-200 px-4 py-2.5">{sub.kode}</td>
-                        <td className="border-r border-gray-200 px-4 py-2.5 relative">
-                          <div className="absolute left-2 top-3 text-gray-300 pointer-events-none"><CornerDownRight className="w-4 h-4" /></div>
-                          <span className="pl-6">{sub.ro}</span>
-                        </td>
-
-                        <td className="border-r border-gray-200 px-4 py-2.5 text-center text-gray-500">{sub.abt.orang || "-"}</td>
-                        <td className="border-r border-gray-200 px-4 py-2.5 text-right text-gray-600">{sub.abt.anggaran > 0 ? formatRp(sub.abt.anggaran) : "-"}</td>
-
-                        <td className="border-r border-gray-200 px-4 py-2.5 text-center bg-gray-50/50 text-gray-500">{sub.nonAbt.orang || "-"}</td>
-                        <td className="border-r border-gray-200 px-4 py-2.5 text-right bg-gray-50/50 text-gray-600">{sub.nonAbt.anggaran > 0 ? formatRp(sub.nonAbt.anggaran) : "-"}</td>
-
-                        <td className="px-4 py-2.5 text-right bg-amber-50/30 text-amber-700 font-medium">{sub.abt.anggaran + sub.nonAbt.anggaran > 0 ? formatRp(sub.abt.anggaran + sub.nonAbt.anggaran) : "-"}</td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-            <tfoot className="bg-amber-100 font-bold uppercase text-amber-900 border-b-2 border-white">
-              <tr>
-                <td colSpan={3} className="border-r border-amber-200 px-4 py-4 text-right">TOTAL {group.groupName}</td>
-                <td className="border-r border-amber-200 px-4 py-4 text-center">{groupAbtO}</td>
-                <td className="border-r border-amber-200 px-4 py-4 text-right">{formatRp(groupAbtA)}</td>
-                <td className="border-r border-amber-200 px-4 py-4 text-center bg-amber-200/40">{groupNonO}</td>
-                <td className="border-r border-amber-200 px-4 py-4 text-right bg-amber-200/40">{formatRp(groupNonA)}</td>
-                <td className="px-4 py-4 text-right bg-amber-400 text-white shadow-inner">{formatRp(groupAbtA + groupNonA)}</td>
               </tr>
             </tfoot>
           </table>
@@ -450,12 +347,8 @@ export default function RekapanTable({ data }: RekapanTableProps) {
         </button>
       </div>
 
-      {/* RENDER TIAP TABEL BERDASARKAN GRUP */}
-      {data.map((group) => 
-        group.groupName.toLowerCase() === "produktivitas" 
-          ? renderProduktivitasGroup(group) 
-          : renderStandardGroup(group)
-      )}
+      {/* RENDER SEMUA GRUP MENGGUNAKAN SATU FUNGSI YANG SAMA (14 KOLOM) */}
+      {data.map((group) => renderStandardGroup(group))}
 
       {/* TABEL TOTAL KESELURUHAN MODUL */}
       {data.length > 0 && (
@@ -466,7 +359,7 @@ export default function RekapanTable({ data }: RekapanTableProps) {
                 <tr>
                   <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-12">NO.</th>
                   <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 w-32">KODE</th>
-                  <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 min-w-[250px]">Rincian Output (RO)</th>
+                  <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 w-[300px]">Rincian Output (RO)</th>
                   <th colSpan={5} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#184878]">ABT</th>
                   <th colSpan={5} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#153a5e]">NON-ABT</th>
                   <th rowSpan={3} className="border border-[#1a4e82] px-4 py-3 text-center w-40 bg-[#12304d]">Total Anggaran</th>
@@ -475,12 +368,12 @@ export default function RekapanTable({ data }: RekapanTableProps) {
                   <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#1c548c]">Target</th>
                   <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#1c548c] w-24">Realisasi Orang</th>
                   <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#1c548c] w-24">Persentase (%)</th>
-                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#1c548c] w-32">Anggaran (Rp.)</th>
+                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#1c548c] w-40">Anggaran (Rp.)</th>
                   
                   <th colSpan={2} className="border border-[#1a4e82] px-4 py-2 text-center bg-[#194269]">Target</th>
                   <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#194269] w-24">Realisasi Orang</th>
                   <th rowSpan={2} className="border border-[#1a4e82] px-3 py-3 text-center bg-[#194269] w-24">Persentase (%)</th>
-                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#194269] w-32">Anggaran (Rp.)</th>
+                  <th rowSpan={2} className="border border-[#1a4e82] px-4 py-3 text-center bg-[#194269] w-40">Anggaran (Rp.)</th>
                 </tr>
                 <tr>
                   <th className="border border-[#1a4e82] px-3 py-2 text-center bg-[#2060a0] w-16">Paket</th>
@@ -491,7 +384,7 @@ export default function RekapanTable({ data }: RekapanTableProps) {
               </thead>
               <tbody className="bg-[#15406A] text-white font-bold tracking-wide">
                 <tr>
-                  <td colSpan={3} className="border-r border-[#1a4e82] px-4 py-5 text-right uppercase text-[15px]">TOTAL KESELURUHAN MODUL</td>
+                  <td colSpan={3} className="border-r border-[#1a4e82] px-4 py-5 text-right uppercase text-[15px]">TOTAL KESELURUHAN</td>
                   
                   <td className="border-r border-[#1a4e82] px-3 py-5 text-center">{grandTotalAbtP}</td>
                   <td className="border-r border-[#1a4e82] px-3 py-5 text-center text-blue-200">{grandTotalAbtO}</td>
@@ -525,7 +418,7 @@ export default function RekapanTable({ data }: RekapanTableProps) {
                 <tr>
                   <th className="border-y border-emerald-900 px-4 py-3 text-center w-16">NO.</th>
                   <th className="border-y border-emerald-900 px-4 py-3 text-center w-32">-</th>
-                  <th className="border-y border-emerald-900 px-4 py-3 min-w-[250px]">Keterangan</th>
+                  <th className="border-y border-emerald-900 px-4 py-3 w-[300px]">Keterangan</th>
                   <th className="border-y border-emerald-900 px-4 py-3 text-center text-emerald-200/60">Tidak Ada Rincian Target & Realisasi</th>
                   <th className="border-y border-emerald-900 px-4 py-3 text-center w-40">Total Anggaran (Rp.)</th>
                 </tr>
