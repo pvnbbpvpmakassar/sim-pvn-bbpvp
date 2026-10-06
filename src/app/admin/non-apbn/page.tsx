@@ -256,7 +256,6 @@ export default function MenuNonAPBNPage() {
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-16">NO.</th>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Realisasi Paket</th>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-1/3">Realisasi Orang</th>
-                <th className="border border-[#1a4e82] px-4 py-3 text-center w-32">Persen (%)</th>
                 <th className="border border-[#1a4e82] px-4 py-3 text-center w-24">Aksi</th>
               </tr>
             </thead>
@@ -290,7 +289,7 @@ export default function MenuNonAPBNPage() {
                           className="w-full h-full px-4 py-3 text-center font-semibold bg-transparent outline-none focus:bg-white"
                         />
                       </td>
-                      <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50/50 text-[#15406A] font-bold">{hitungPersen(row.realisasi_orang, row.realisasi_paket)}%</td>
+
                       <td className="px-4 py-2 text-center">
                         <button onClick={() => hapusBaris(row.id)} title="Hapus Baris" className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
                           <Trash2 className="w-4 h-4" />
@@ -307,8 +306,7 @@ export default function MenuNonAPBNPage() {
                   <td className="border border-[#1a4e82] px-4 py-4 text-right uppercase">Total</td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-[15px]">{formatInputAngka(grandTotalPaket)}</td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-center bg-amber-500 text-emerald-100 text-[15px]">{formatInputAngka(grandTotalOrang)}</td>
-                  <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-900 text-base">{grandTotalPersen}%</td>
-                  <td className="border border-[#1a4e82] bg-amber-400"></td>
+                  <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-900 text-base"></td>
                 </tr>
               </tfoot>
             )}

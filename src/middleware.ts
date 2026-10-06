@@ -1,22 +1,25 @@
-// src/middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
   const isAuthenticated = request.cookies.has('mock_session');
   const path = request.nextUrl.pathname;
+  
   const isLoginPage = path.startsWith('/login');
+  const isRootPage = path === '/';
+  const isAdminRoute = path.startsWith('/admin');
 
-  // Jika belum login dan bukan di halaman login -> lempar ke login
-  if (!isAuthenticated && !isLoginPage) {
+  // 1. Jika belum login dan mencoba akses halaman /admin -> lempar ke login
+  if (!isAuthenticated && isAdminRoute) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Jika sudah login dan mencoba ke halaman login ATAU halaman root (/) -> lempar ke admin
-  if (isAuthenticated && (isLoginPage || path === '/')) {
+  // 2. Jika SUDAH login dan mengakses root (/) atau (/login) -> langsung lempar ke dashboard admin
+  if (isAuthenticated && (isLoginPage || isRootPage)) {
     return NextResponse.redirect(new URL('/admin', request.url));
   }
 
+  // Sisa request (seperti user belum login mengakses '/' atau '/login') dibiarkan lewat
   return NextResponse.next();
 }
 
