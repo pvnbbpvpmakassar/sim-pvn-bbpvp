@@ -19,7 +19,7 @@ export default function PublicDashboardPage() {
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-black text-[#15406A] tracking-tight flex items-center gap-1">
-                  SIMPVN <span className="text-amber-500">Dashboard</span>
+                  Dashboard <span className="text-amber-500">PVN 2026</span>
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-500 font-medium tracking-wide">
                   Balai Pelatihan Vokasi & Produktivitas
