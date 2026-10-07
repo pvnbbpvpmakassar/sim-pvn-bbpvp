@@ -3,13 +3,23 @@
 
 import { sql } from "@/lib/db";
 
+// ============================================================
+// RINCIAN OUTPUT
+// ============================================================
+
 export type SubRowData = {
   id: string;
   kode: string;
   ro: string;
-  paket: number;
-  orang: number; // TAMBAHAN
-  realisasi: number;
+
+  // Target
+  paket?: number;
+  orang: number;
+
+  // Realisasi
+  realisasiPaket?: number;
+  realisasiOrang: number;
+
   isReadOnly?: boolean;
 };
 
@@ -17,124 +27,345 @@ export type RowData = {
   id: string;
   kode: string;
   ro: string;
-  paket: number;
-  orang: number; // TAMBAHAN
-  realisasi: number;
-  isReadOnly?: boolean;
+
+  // Target
+  paket?: number;
+  orang: number;
+
+  // Realisasi
+  realisasiPaket?: number;
+  realisasiOrang: number;
+
   subRows: SubRowData[];
+
+  isReadOnly?: boolean;
 };
 
-// Fungsi Read (Menarik Data
-// Fungsi Read (Menarik Data)
+// ============================================================
+// HELPER
+// ============================================================
+
+const toNumber = (value: unknown): number => {
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : 0;
+};
+
+const sortByKode = <T extends { kode: string }>(rows: T[]): T[] => {
+  return [...rows].sort((a, b) =>
+    a.kode.localeCompare(b.kode, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
+};
+
+/**
+ * Modul yang hanya menggunakan:
+ * - target_orang
+ * - realisasi_orang
+ *
+ * Tidak menggunakan:
+ * - paket
+ * - realisasi_paket
+ */
+const isOrangOnlyModule = (modul: string): boolean => {
+  return ["produktivitas", "pflk"].includes(modul.toLowerCase());
+};
+
+// ============================================================
+// GET RINCIAN OUTPUT
+// ============================================================
+
 export async function getRincianOutput(kategori: string, modul: string) {
   try {
     const data = await sql`
-      SELECT * FROM rincian_output 
-      WHERE kategori = ${kategori} AND modul = ${modul}
+      SELECT *
+      FROM rincian_output
+      WHERE kategori = ${kategori}
+        AND modul = ${modul}
     `;
 
     const parents = data.filter((row) => row.parent_id === null);
     const children = data.filter((row) => row.parent_id !== null);
 
-    const formattedData = parents
-      .map((parent) => {
-        const subRows = children
-          .filter((child) => child.parent_id === parent.id)
-          .map((child) => ({
-            id: child.id,
-            kode: child.kode || "-",
-            ro: child.nama_ro,
-            paket: child.paket,
-            orang: child.target_orang || 0,
-            realisasi: child.realisasi,
-            isReadOnly: child.is_read_only,
-          }))
-          // MENGURUTKAN SUB-RO DARI BACKEND
-          .sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+    const formattedData: RowData[] = sortByKode(
+      parents.map((parent) => {
+        const subRows: SubRowData[] = sortByKode(
+          children
+            .filter((child) => child.parent_id === parent.id)
+            .map((child) => ({
+              id: String(child.id),
+              kode: child.kode || "-",
+              ro: child.nama_ro || "",
+              paket: toNumber(child.paket),
+              orang: toNumber(child.target_orang),
+              realisasiPaket: toNumber(child.realisasi_paket),
+              realisasiOrang: toNumber(child.realisasi_orang),
+              isReadOnly: Boolean(child.is_read_only),
+            })),
+        );
 
         return {
-          id: parent.id,
+          id: String(parent.id),
           kode: parent.kode || "-",
-          ro: parent.nama_ro,
-          paket: parent.paket,
-          orang: parent.target_orang || 0,
-          realisasi: parent.realisasi,
-          isReadOnly: parent.is_read_only,
-          subRows: subRows,
+          ro: parent.nama_ro || "",
+          paket: toNumber(parent.paket),
+          orang: toNumber(parent.target_orang),
+          realisasiPaket: toNumber(parent.realisasi_paket),
+          realisasiOrang: toNumber(parent.realisasi_orang),
+          isReadOnly: Boolean(parent.is_read_only),
+          subRows,
         };
-      })
-      // MENGURUTKAN RO (BARIS INDUK) DARI BACKEND
-      .sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+      }),
+    );
 
-    return { success: true, data: formattedData };
+    return {
+      success: true,
+      data: formattedData,
+    };
   } catch (error: unknown) {
     console.error("Gagal mengambil data:", error);
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Gagal mengambil data dari database" };
+
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Gagal mengambil data dari database",
+    };
   }
 }
 
-// Fungsi Upsert/Bulk Save (Menyimpan Data)
-// <-- any[] diganti menjadi RowData[]
-// Fungsi Upsert/Bulk Save (Menyimpan Data)
+// ============================================================
+// SIMPAN BULK RINCIAN OUTPUT
+// ============================================================
+
 export async function simpanBulkRincianOutput(kategori: string, modul: string, rows: RowData[]) {
   try {
+    const orangOnly = isOrangOnlyModule(modul);
+
+    // ========================================================
+    // 1. HAPUS DATA MANUAL LAMA
+    // ========================================================
+
     await sql`
-      DELETE FROM rincian_output 
-      WHERE kategori = ${kategori} AND modul = ${modul} AND is_read_only = FALSE
+      DELETE FROM rincian_output
+      WHERE kategori = ${kategori}
+        AND modul = ${modul}
+        AND is_read_only = FALSE
     `;
 
+    // ========================================================
+    // 2. INSERT DATA
+    // ========================================================
+
     for (const row of rows) {
+      const paket = orangOnly ? 0 : toNumber(row.paket);
+
+      const realisasiPaket = orangOnly ? 0 : toNumber(row.realisasiPaket);
+
+      const orang = toNumber(row.orang);
+      const realisasiOrang = toNumber(row.realisasiOrang);
+
+      // ======================================================
+      // PARENT READ ONLY
+      // ======================================================
+
       if (row.isReadOnly) {
         const manualSubRows = row.subRows ? row.subRows.filter((sub) => !sub.isReadOnly) : [];
 
         if (manualSubRows.length > 0) {
-          const existingParent = await sql`SELECT id FROM rincian_output WHERE id = ${row.id}`;
+          const existingParent = await sql`
+            SELECT id
+            FROM rincian_output
+            WHERE id = ${row.id}
+          `;
+
           if (existingParent.length === 0) {
             await sql`
-              INSERT INTO rincian_output (id, kategori, modul, kode, nama_ro, paket, target_orang, realisasi, is_read_only)
-              VALUES (${row.id}, ${kategori}, ${modul}, ${row.kode}, ${row.ro}, ${row.paket}, ${row.orang}, ${row.realisasi}, TRUE)
+              INSERT INTO rincian_output (
+                id,
+                kategori,
+                modul,
+                kode,
+                nama_ro,
+                paket,
+                target_orang,
+                realisasi_orang,
+                realisasi_paket,
+                is_read_only
+              )
+              VALUES (
+                ${row.id},
+                ${kategori},
+                ${modul},
+                ${row.kode},
+                ${row.ro},
+                ${paket},
+                ${orang},
+                ${realisasiOrang},
+                ${realisasiPaket},
+                TRUE
+              )
             `;
           }
 
+          // ==================================================
+          // SUB-ROW DARI PARENT READ ONLY
+          // ==================================================
+
           for (const sub of manualSubRows) {
+            const subPaket = orangOnly ? 0 : toNumber(sub.paket);
+
+            const subRealisasiPaket = orangOnly ? 0 : toNumber(sub.realisasiPaket);
+
             await sql`
-              INSERT INTO rincian_output (id, kategori, modul, parent_id, kode, nama_ro, paket, target_orang, realisasi, is_read_only)
-              VALUES (${sub.id}, ${kategori}, ${modul}, ${row.id}, ${sub.kode}, ${sub.ro}, ${sub.paket}, ${sub.orang}, ${sub.realisasi}, FALSE)
+              INSERT INTO rincian_output (
+                id,
+                kategori,
+                modul,
+                parent_id,
+                kode,
+                nama_ro,
+                paket,
+                target_orang,
+                realisasi_orang,
+                realisasi_paket,
+                is_read_only
+              )
+              VALUES (
+                ${sub.id},
+                ${kategori},
+                ${modul},
+                ${row.id},
+                ${sub.kode},
+                ${sub.ro},
+                ${subPaket},
+                ${toNumber(sub.orang)},
+                ${toNumber(sub.realisasiOrang)},
+                ${subRealisasiPaket},
+                FALSE
+              )
             `;
           }
         }
+
         continue;
       }
 
+      // ======================================================
+      // PARENT MANUAL
+      // ======================================================
+
       await sql`
-        INSERT INTO rincian_output (id, kategori, modul, kode, nama_ro, paket, target_orang, realisasi, is_read_only)
-        VALUES (${row.id}, ${kategori}, ${modul}, ${row.kode}, ${row.ro}, ${row.paket}, ${row.orang}, ${row.realisasi}, FALSE)
+        INSERT INTO rincian_output (
+          id,
+          kategori,
+          modul,
+          kode,
+          nama_ro,
+          paket,
+          target_orang,
+          realisasi_orang,
+          realisasi_paket,
+          is_read_only
+        )
+        VALUES (
+          ${row.id},
+          ${kategori},
+          ${modul},
+          ${row.kode},
+          ${row.ro},
+          ${paket},
+          ${orang},
+          ${realisasiOrang},
+          ${realisasiPaket},
+          FALSE
+        )
       `;
+
+      // ======================================================
+      // SUB-ROW MANUAL
+      // ======================================================
 
       if (row.subRows && row.subRows.length > 0) {
         for (const sub of row.subRows) {
-          if (sub.isReadOnly) continue;
+          if (sub.isReadOnly) {
+            continue;
+          }
+
+          const subPaket = orangOnly ? 0 : toNumber(sub.paket);
+
+          const subRealisasiPaket = orangOnly ? 0 : toNumber(sub.realisasiPaket);
+
           await sql`
-            INSERT INTO rincian_output (id, kategori, modul, parent_id, kode, nama_ro, paket, target_orang, realisasi, is_read_only)
-            VALUES (${sub.id}, ${kategori}, ${modul}, ${row.id}, ${sub.kode}, ${sub.ro}, ${sub.paket}, ${sub.orang}, ${sub.realisasi}, FALSE)
+            INSERT INTO rincian_output (
+              id,
+              kategori,
+              modul,
+              parent_id,
+              kode,
+              nama_ro,
+              paket,
+              target_orang,
+              realisasi_orang,
+              realisasi_paket,
+              is_read_only
+            )
+            VALUES (
+              ${sub.id},
+              ${kategori},
+              ${modul},
+              ${row.id},
+              ${sub.kode},
+              ${sub.ro},
+              ${subPaket},
+              ${toNumber(sub.orang)},
+              ${toNumber(sub.realisasiOrang)},
+              ${subRealisasiPaket},
+              FALSE
+            )
           `;
         }
       }
     }
-    return { success: true };
+
+    return {
+      success: true,
+    };
   } catch (error: unknown) {
     console.error("Gagal melakukan operasi database:", error);
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Terjadi kesalahan yang tidak diketahui pada server." };
+
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Terjadi kesalahan yang tidak diketahui pada server.",
+    };
   }
 }
+
+// ============================================================
+// INTEGRASI UPTP
+// ============================================================
 
 export async function getIntegrasiUPTP(kategori: string) {
   try {
     const data = await sql`
-      SELECT * FROM rincian_output 
-      WHERE kategori = ${kategori} AND modul IN ('blkk', 'lpks', 'tmt')
+      SELECT *
+      FROM rincian_output
+      WHERE kategori = ${kategori}
+        AND modul IN ('blkk', 'lpks', 'tmt')
       ORDER BY created_at ASC
     `;
 
@@ -145,29 +376,36 @@ export async function getIntegrasiUPTP(kategori: string) {
 
       let totalPaket = 0;
       let totalOrang = 0;
-      let totalRealisasi = 0;
+      let totalRealisasiOrang = 0;
+      let totalRealisasiPaket = 0;
 
       parents.forEach((p) => {
         const subs = children.filter((c) => c.parent_id === p.id);
+
         if (subs.length > 0) {
-          totalPaket += subs.reduce((acc, c) => acc + (c.paket || 0), 0);
-          totalOrang += subs.reduce((acc, c) => acc + (c.target_orang || 0), 0);
-          totalRealisasi += subs.reduce((acc, c) => acc + (c.realisasi || 0), 0);
+          totalPaket += subs.reduce((acc, c) => acc + toNumber(c.paket), 0);
+
+          totalOrang += subs.reduce((acc, c) => acc + toNumber(c.target_orang), 0);
+
+          totalRealisasiOrang += subs.reduce((acc, c) => acc + toNumber(c.realisasi_orang), 0);
+
+          totalRealisasiPaket += subs.reduce((acc, c) => acc + toNumber(c.realisasi_paket), 0);
         } else {
-          totalPaket += p.paket || 0;
-          totalOrang += p.target_orang || 0;
-          totalRealisasi += p.realisasi || 0;
+          totalPaket += toNumber(p.paket);
+          totalOrang += toNumber(p.target_orang);
+          totalRealisasiOrang += toNumber(p.realisasi_orang);
+          totalRealisasiPaket += toNumber(p.realisasi_paket);
         }
       });
 
-      // PERBAIKAN: Cari kode asli pertama yang diinput user, bukan sekadar index 0
       const firstValidCode = parents.find((p) => p.kode && p.kode !== "-")?.kode || "-";
 
       return {
         kode: firstValidCode,
         paket: totalPaket,
         orang: totalOrang,
-        realisasi: totalRealisasi,
+        realisasiOrang: totalRealisasiOrang,
+        realisasiPaket: totalRealisasiPaket,
       };
     };
 
@@ -181,13 +419,25 @@ export async function getIntegrasiUPTP(kategori: string) {
     };
   } catch (error: unknown) {
     console.error("Gagal melakukan operasi database:", error);
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Terjadi kesalahan server." };
+
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Terjadi kesalahan server.",
+    };
   }
 }
 
-// --- Tipe Data Khusus Satpel ---
-// --- Tipe Data Khusus Satpel ---
+// ============================================================
+// SATPEL
+// ============================================================
+
 export type LokasiSatpel = {
   id: string;
   name: string;
@@ -197,34 +447,47 @@ export type SatpelSubRowData = {
   id: string;
   kode: string;
   ro: string;
-  // TAMBAHAN: Masukkan 'orang' ke dalam Record JSON
-  data: Record<string, { paket: number; orang?: number; realisasi: number }>;
+  data: Record<
+    string,
+    {
+      paket: number;
+      orang?: number;
+      realisasiOrang: number;
+      realisasiPaket: number;
+    }
+  >;
 };
 
 export type SatpelRowData = {
   id: string;
   kode: string;
   ro: string;
-  // TAMBAHAN: Masukkan 'orang' ke dalam Record JSON
-  data: Record<string, { paket: number; orang?: number; realisasi: number }>;
+  data: Record<
+    string,
+    {
+      paket: number;
+      orang?: number;
+      realisasiOrang: number;
+      realisasiPaket: number;
+    }
+  >;
   subRows: SatpelSubRowData[];
 };
 
-// --- Fungsi Read Khusus Satpel ---
 export async function getSatpelData(kategori: string) {
   try {
-    // 1. Ambil daftar kolom lokasi
     const locs = await sql`
-      SELECT id, nama_lokasi as name 
-      FROM lokasi_satpel 
-      WHERE kategori = ${kategori} 
+      SELECT id, nama_lokasi as name
+      FROM lokasi_satpel
+      WHERE kategori = ${kategori}
       ORDER BY urutan ASC
     `;
 
-    // 2. Ambil baris data
     const data = await sql`
-      SELECT * FROM rincian_output 
-      WHERE kategori = ${kategori} AND modul = 'satpel'
+      SELECT *
+      FROM rincian_output
+      WHERE kategori = ${kategori}
+        AND modul = 'satpel'
     `;
 
     const parents = data.filter((row) => row.parent_id === null);
@@ -240,131 +503,277 @@ export async function getSatpelData(kategori: string) {
             ro: child.nama_ro,
             data: child.data_satpel || {},
           }))
-          // MENGURUTKAN SUB-RO SATPEL DARI BACKEND
-          .sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+          .sort((a, b) =>
+            a.kode.localeCompare(b.kode, undefined, {
+              numeric: true,
+              sensitivity: "base",
+            }),
+          );
 
         return {
           id: parent.id,
           kode: parent.kode || "-",
           ro: parent.nama_ro,
           data: parent.data_satpel || {},
-          subRows: subRows,
+          subRows,
         };
       })
-      // MENGURUTKAN RO SATPEL DARI BACKEND
-      .sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
+      .sort((a, b) =>
+        a.kode.localeCompare(b.kode, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
 
-    return { success: true, locations: locs, data: formattedData };
+    return {
+      success: true,
+      locations: locs,
+      data: formattedData,
+    };
   } catch (error: unknown) {
     console.error("Gagal mengambil data Satpel:", error);
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Gagal mengambil data dari database" };
+
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Gagal mengambil data dari database",
+    };
   }
 }
 
-// --- Fungsi Upsert Khusus Satpel ---
 export async function simpanSatpelData(kategori: string, locations: LokasiSatpel[], rows: SatpelRowData[]) {
   try {
-    // 1. Reset data lama untuk kategori dan modul ini
-    await sql`DELETE FROM lokasi_satpel WHERE kategori = ${kategori}`;
-    await sql`DELETE FROM rincian_output WHERE kategori = ${kategori} AND modul = 'satpel'`;
+    await sql`
+      DELETE FROM lokasi_satpel
+      WHERE kategori = ${kategori}
+    `;
 
-    // 2. Simpan urutan kolom lokasi baru
+    await sql`
+      DELETE FROM rincian_output
+      WHERE kategori = ${kategori}
+        AND modul = 'satpel'
+    `;
+
     for (let i = 0; i < locations.length; i++) {
       await sql`
-        INSERT INTO lokasi_satpel (id, kategori, nama_lokasi, urutan) 
-        VALUES (${locations[i].id}, ${kategori}, ${locations[i].name}, ${i})
+        INSERT INTO lokasi_satpel (
+          id,
+          kategori,
+          nama_lokasi,
+          urutan
+        )
+        VALUES (
+          ${locations[i].id},
+          ${kategori},
+          ${locations[i].name},
+          ${i}
+        )
       `;
     }
 
-    // 3. Simpan baris data beserta JSONB
     for (const row of rows) {
       const rowDataJson = JSON.stringify(row.data || {});
+
       await sql`
-        INSERT INTO rincian_output (id, kategori, modul, kode, nama_ro, data_satpel, is_read_only)
-        VALUES (${row.id}, ${kategori}, 'satpel', ${row.kode}, ${row.ro}, ${rowDataJson}, FALSE)
+        INSERT INTO rincian_output (
+          id,
+          kategori,
+          modul,
+          kode,
+          nama_ro,
+          data_satpel,
+          is_read_only
+        )
+        VALUES (
+          ${row.id},
+          ${kategori},
+          'satpel',
+          ${row.kode},
+          ${row.ro},
+          ${rowDataJson},
+          FALSE
+        )
       `;
 
       if (row.subRows && row.subRows.length > 0) {
         for (const sub of row.subRows) {
           const subDataJson = JSON.stringify(sub.data || {});
+
           await sql`
-            INSERT INTO rincian_output (id, kategori, modul, parent_id, kode, nama_ro, data_satpel, is_read_only)
-            VALUES (${sub.id}, ${kategori}, 'satpel', ${row.id}, ${sub.kode}, ${sub.ro}, ${subDataJson}, FALSE)
+            INSERT INTO rincian_output (
+              id,
+              kategori,
+              modul,
+              parent_id,
+              kode,
+              nama_ro,
+              data_satpel,
+              is_read_only
+            )
+            VALUES (
+              ${sub.id},
+              ${kategori},
+              'satpel',
+              ${row.id},
+              ${sub.kode},
+              ${sub.ro},
+              ${subDataJson},
+              FALSE
+            )
           `;
         }
       }
     }
-    return { success: true };
+
+    return {
+      success: true,
+    };
   } catch (error: unknown) {
     console.error("Gagal menyimpan data Satpel:", error);
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Terjadi kesalahan saat menyimpan Satpel." };
+
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Terjadi kesalahan saat menyimpan Satpel.",
+    };
   }
 }
 
-// --- Tipe Data Alokasi Anggaran ---
-export type AlokasiRowData = { id: string; nama_modul: string; anggaran: number; realisasi: number };
-// --- Fungsi Read (Menarik Data Alokasi Anggaran) ---
+// ============================================================
+// ALOKASI ANGGARAN
+// ============================================================
 
-// --- Fungsi Read (Menarik Data Alokasi Anggaran) ---
+export type AlokasiRowData = {
+  id: string;
+  nama_modul: string;
+  anggaran: number;
+  realisasi: number;
+};
+
 export async function getAlokasiAnggaran() {
   try {
     const data = await sql`
-      SELECT * FROM alokasi_anggaran 
+      SELECT *
+      FROM alokasi_anggaran
       ORDER BY created_at ASC
     `;
 
-    const format = (kategori: string) => data
-      .filter((d) => d.kategori === kategori)
-      .map((d) => ({
-        id: d.id,
-        nama_modul: d.nama_modul,
-        anggaran: Number(d.anggaran),
-        realisasi: Number(d.realisasi),
-      }));
+    const format = (kategori: string) =>
+      data
+        .filter((d) => d.kategori === kategori)
+        .map((d) => ({
+          id: d.id,
+          nama_modul: d.nama_modul,
+          anggaran: Number(d.anggaran),
+          realisasi: Number(d.realisasi),
+        }));
 
-    return { 
-      success: true, 
-      data: { 
-        abt: format("ABT"), 
+    return {
+      success: true,
+      data: {
+        abt: format("ABT"),
         nonAbt: format("NON-ABT"),
-        lainnya: format("LAINNYA") // TAMBAHAN: Tarik data kategori LAINNYA
-      } 
+        lainnya: format("LAINNYA"),
+      },
     };
   } catch (error: unknown) {
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Gagal mengambil data dari database" };
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Gagal mengambil data dari database",
+    };
   }
 }
 
-// --- Fungsi Upsert (Menyimpan Data Alokasi Anggaran) ---
 export async function simpanBulkAlokasiAnggaran(abtRows: AlokasiRowData[], nonAbtRows: AlokasiRowData[], lainnyaRows: AlokasiRowData[] = []) {
   try {
-    // Pendekatan sinkronisasi penuh: Hapus semua data lama dan masukkan yang baru
-    await sql`DELETE FROM alokasi_anggaran`;
+    await sql`
+      DELETE FROM alokasi_anggaran
+    `;
 
     const insertRow = async (row: AlokasiRowData, kategori: string) => {
       await sql`
-        INSERT INTO alokasi_anggaran (id, kategori, nama_modul, anggaran, realisasi)
-        VALUES (${row.id}, ${kategori}, ${row.nama_modul}, ${row.anggaran}, ${row.realisasi})
+        INSERT INTO alokasi_anggaran (
+          id,
+          kategori,
+          nama_modul,
+          anggaran,
+          realisasi
+        )
+        VALUES (
+          ${row.id},
+          ${kategori},
+          ${row.nama_modul},
+          ${row.anggaran},
+          ${row.realisasi}
+        )
       `;
     };
 
-    // Eksekusi penyimpanan semua kategori
-    for (const row of abtRows) await insertRow(row, 'ABT');
-    for (const row of nonAbtRows) await insertRow(row, 'NON-ABT');
-    for (const row of lainnyaRows) await insertRow(row, 'LAINNYA'); // TAMBAHAN: Simpan LAINNYA
+    for (const row of abtRows) {
+      await insertRow(row, "ABT");
+    }
 
-    return { success: true };
+    for (const row of nonAbtRows) {
+      await insertRow(row, "NON-ABT");
+    }
+
+    for (const row of lainnyaRows) {
+      await insertRow(row, "LAINNYA");
+    }
+
+    return {
+      success: true,
+    };
   } catch (error: unknown) {
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Terjadi kesalahan saat menyimpan Alokasi Anggaran." };
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Terjadi kesalahan saat menyimpan Alokasi Anggaran.",
+    };
   }
 }
 
-// --- Tipe Data Rincian Anggaran ---
-// --- Tipe Data Rincian Anggaran ---
+// ============================================================
+// RINCIAN ANGGARAN
+// ============================================================
+
+type RawRowAnggaran = {
+  id: string;
+  kategori: string;
+  modul: string;
+  parent_id: string | null;
+  kode: string;
+  nama_ro: string;
+  anggaran: number;
+  realisasi_anggaran: number;
+  is_read_only: boolean;
+};
+
 export type AnggaranSubRowData = {
   id: string;
   kode: string;
@@ -372,7 +781,13 @@ export type AnggaranSubRowData = {
   anggaran: number;
   realisasi: number;
   isFromDB?: boolean;
-  fallbackInsert?: { kategori: string; modul: string; kode: string; ro: string; parent_id: string | null };
+  fallbackInsert?: {
+    kategori: string;
+    modul: string;
+    kode: string;
+    ro: string;
+    parent_id: string | null;
+  };
 };
 
 export type AnggaranRowData = {
@@ -383,7 +798,13 @@ export type AnggaranRowData = {
   realisasi: number;
   subRows: AnggaranSubRowData[];
   isFromDB?: boolean;
-  fallbackInsert?: { kategori: string; modul: string; kode: string; ro: string; parent_id: string | null };
+  fallbackInsert?: {
+    kategori: string;
+    modul: string;
+    kode: string;
+    ro: string;
+    parent_id: string | null;
+  };
 };
 
 export type ModulAnggaranGroup = {
@@ -394,21 +815,33 @@ export type ModulAnggaranGroup = {
 
 export async function getRincianAnggaran() {
   try {
-    const roData = (await sql`SELECT * FROM rincian_output ORDER BY modul, created_at ASC`) as RawRow[];
-    const alokasiData = await sql`SELECT * FROM alokasi_anggaran`;
+    const roData = (await sql`
+      SELECT *
+      FROM rincian_output
+      ORDER BY modul, created_at ASC
+    `) as RawRowAnggaran[];
+
+    const alokasiData = await sql`
+      SELECT *
+      FROM alokasi_anggaran
+    `;
 
     const formatData = (kategori: string): ModulAnggaranGroup[] => {
       const filtered = roData.filter((r) => r.kategori === kategori);
+
       const alokasiKategori = alokasiData.filter((a) => a.kategori === kategori);
 
-      const uptpGroupModules = ["uptp", "tmt", "lpks", "blkk", "satpel", "uptd", "plfk", "pflk"];
+      const uptpGroupModules = ["uptp", "tmt", "lpks", "blkk", "satpel", "uptd", "plfk", "pflk", "non-batch"];
+
       const independentModules = Array.from(new Set(filtered.map((r) => r.modul))).filter((m) => !uptpGroupModules.includes(m.toLowerCase()));
 
       const result: ModulAnggaranGroup[] = [];
 
       const buildRowsForModule = (modulName: string, prefix: string = ""): AnggaranRowData[] => {
         const modData = filtered.filter((r) => r.modul === modulName);
+
         const parents = modData.filter((r) => r.parent_id === null);
+
         const children = modData.filter((r) => r.parent_id !== null);
 
         return parents.map((p) => {
@@ -422,6 +855,7 @@ export async function getRincianAnggaran() {
               realisasi: Number(c.realisasi_anggaran || 0),
               isFromDB: true,
             }));
+
           return {
             id: p.id,
             kode: p.kode || "-",
@@ -436,11 +870,20 @@ export async function getRincianAnggaran() {
 
       independentModules.forEach((modul) => {
         const alokasiMatch = alokasiKategori.find((a) => a.nama_modul.toLowerCase().includes(modul.toLowerCase()));
-        result.push({ modul, alokasi: alokasiMatch ? Number(alokasiMatch.anggaran) : 0, rows: buildRowsForModule(modul) });
+
+        result.push({
+          modul,
+          alokasi: alokasiMatch ? Number(alokasiMatch.anggaran) : 0,
+          rows: buildRowsForModule(modul),
+        });
       });
 
-      // --- LOGIKA MEGA GRUP UPTP ---
+      // ======================================================
+      // MEGA GRUP UPTP
+      // ======================================================
+
       const hasUptpData = filtered.some((r) => uptpGroupModules.includes(r.modul));
+
       const uptpAlokasiMatch = alokasiKategori.find((a) => a.nama_modul.toLowerCase().includes("uptp"));
 
       if (hasUptpData || uptpAlokasiMatch) {
@@ -448,13 +891,19 @@ export async function getRincianAnggaran() {
 
         const getIntegrasiRow = (modulName: string, roName: string, fallbackId: string) => {
           const modData = filtered.filter((r) => r.modul === modulName);
-          if (modData.length === 0) return null;
+
+          if (modData.length === 0) {
+            return null;
+          }
 
           const parents = modData.filter((r) => r.parent_id === null);
+
           const firstValidCode = parents.find((p) => p.kode && p.kode !== "-")?.kode || "-";
+
           const realId = parents.length > 0 ? parents[0].id : fallbackId;
 
           const totalAnggaran = modData.reduce((acc, curr) => acc + Number(curr.anggaran || 0), 0);
+
           const totalRealisasi = modData.reduce((acc, curr) => acc + Number(curr.realisasi_anggaran || 0), 0);
 
           return {
@@ -469,34 +918,100 @@ export async function getRincianAnggaran() {
 
         const integratedSubRows: AnggaranSubRowData[] = [];
 
-        // PERBAIKAN: Masukkan logika penyisipan Sub-RO untuk NON-ABT juga
         if (kategori === "ABT") {
           const tmt = getIntegrasiRow("tmt", "TMT", "11111111-1111-1111-1111-111111111112");
-          if (tmt) integratedSubRows.push(tmt);
-          else integratedSubRows.push({ id: "11111111-1111-1111-1111-111111111112", kode: "-", ro: "TMT", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          if (tmt) {
+            integratedSubRows.push(tmt);
+          } else {
+            integratedSubRows.push({
+              id: "11111111-1111-1111-1111-111111111112",
+              kode: "-",
+              ro: "TMT",
+              anggaran: 0,
+              realisasi: 0,
+              isFromDB: true,
+            });
+          }
 
           const lpks = getIntegrasiRow("lpks", "LPKS", "11111111-1111-1111-1111-111111111113");
-          if (lpks) integratedSubRows.push(lpks);
-          else integratedSubRows.push({ id: "11111111-1111-1111-1111-111111111113", kode: "-", ro: "LPKS", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          if (lpks) {
+            integratedSubRows.push(lpks);
+          } else {
+            integratedSubRows.push({
+              id: "11111111-1111-1111-1111-111111111113",
+              kode: "-",
+              ro: "LPKS",
+              anggaran: 0,
+              realisasi: 0,
+              isFromDB: true,
+            });
+          }
 
           const blkk = getIntegrasiRow("blkk", "BLKK", "11111111-1111-1111-1111-111111111114");
-          if (blkk) integratedSubRows.push(blkk);
-          else integratedSubRows.push({ id: "11111111-1111-1111-1111-111111111114", kode: "-", ro: "BLKK", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          if (blkk) {
+            integratedSubRows.push(blkk);
+          } else {
+            integratedSubRows.push({
+              id: "11111111-1111-1111-1111-111111111114",
+              kode: "-",
+              ro: "BLKK",
+              anggaran: 0,
+              realisasi: 0,
+              isFromDB: true,
+            });
+          }
         } else if (kategori === "NON-ABT") {
           const tmt = getIntegrasiRow("tmt", "TMT", "22222222-2222-2222-2222-222222222223");
-          if (tmt) integratedSubRows.push(tmt);
-          else integratedSubRows.push({ id: "22222222-2222-2222-2222-222222222223", kode: "-", ro: "TMT", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          if (tmt) {
+            integratedSubRows.push(tmt);
+          } else {
+            integratedSubRows.push({
+              id: "22222222-2222-2222-2222-222222222223",
+              kode: "-",
+              ro: "TMT",
+              anggaran: 0,
+              realisasi: 0,
+              isFromDB: true,
+            });
+          }
 
           const lpks = getIntegrasiRow("lpks", "LPKS", "22222222-2222-2222-2222-222222222224");
-          if (lpks) integratedSubRows.push(lpks);
-          else integratedSubRows.push({ id: "22222222-2222-2222-2222-222222222224", kode: "-", ro: "LPKS", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          if (lpks) {
+            integratedSubRows.push(lpks);
+          } else {
+            integratedSubRows.push({
+              id: "22222222-2222-2222-2222-222222222224",
+              kode: "-",
+              ro: "LPKS",
+              anggaran: 0,
+              realisasi: 0,
+              isFromDB: true,
+            });
+          }
 
           const blkk = getIntegrasiRow("blkk", "BLKK", "22222222-2222-2222-2222-222222222225");
-          if (blkk) integratedSubRows.push(blkk);
-          else integratedSubRows.push({ id: "22222222-2222-2222-2222-222222222225", kode: "-", ro: "BLKK", anggaran: 0, realisasi: 0, isFromDB: true });
+
+          if (blkk) {
+            integratedSubRows.push(blkk);
+          } else {
+            integratedSubRows.push({
+              id: "22222222-2222-2222-2222-222222222225",
+              kode: "-",
+              ro: "BLKK",
+              anggaran: 0,
+              realisasi: 0,
+              isFromDB: true,
+            });
+          }
         }
 
         const uptpChildren = filtered.filter((r) => r.modul === "uptp" && r.parent_id !== null);
+
         const manualSubs = uptpChildren
           .filter((c) => c.parent_id === PARENT_UUID && c.is_read_only === false)
           .map((c) => ({
@@ -509,6 +1024,7 @@ export async function getRincianAnggaran() {
           }));
 
         const parentDbRow = filtered.find((r) => r.id === PARENT_UUID);
+
         const integratedRow: AnggaranRowData = {
           id: PARENT_UUID,
           kode: parentDbRow?.kode || "4057.SCO.003",
@@ -516,11 +1032,20 @@ export async function getRincianAnggaran() {
           anggaran: Number(parentDbRow?.anggaran || 0),
           realisasi: Number(parentDbRow?.realisasi_anggaran || 0),
           isFromDB: true,
-          fallbackInsert: parentDbRow ? undefined : { kategori, modul: "uptp", kode: "4057.SCO.003", ro: "Bidang Industri dan Jasa", parent_id: null },
+          fallbackInsert: parentDbRow
+            ? undefined
+            : {
+                kategori,
+                modul: "uptp",
+                kode: "4057.SCO.003",
+                ro: "Bidang Industri dan Jasa",
+                parent_id: null,
+              },
           subRows: [...integratedSubRows, ...manualSubs],
         };
 
         const otherUptpParents = filtered.filter((r) => r.modul === "uptp" && r.parent_id === null && r.id !== PARENT_UUID);
+
         const otherUptpRows: AnggaranRowData[] = otherUptpParents.map((p) => ({
           id: p.id,
           kode: p.kode || "-",
@@ -541,37 +1066,64 @@ export async function getRincianAnggaran() {
         }));
 
         const satpelRows = buildRowsForModule("satpel", "");
+
         const uptdRows = buildRowsForModule("uptd", "");
+
         const plfkRows = [...buildRowsForModule("plfk", ""), ...buildRowsForModule("pflk", "")];
 
-        const allUptpGroupRows = [integratedRow, ...otherUptpRows, ...satpelRows, ...uptdRows, ...plfkRows];
+        const nonBatchRows = buildRowsForModule("non-batch", "");
+
+        const allUptpGroupRows = [integratedRow, ...otherUptpRows, ...satpelRows, ...uptdRows, ...plfkRows, ...nonBatchRows];
 
         const mergedMap = new Map<string, AnggaranRowData>();
 
         allUptpGroupRows.forEach((r) => {
           const key = `${r.kode}:::${r.ro.toLowerCase().trim()}`;
+
           if (mergedMap.has(key)) {
             const existing = mergedMap.get(key)!;
+
             existing.anggaran += r.anggaran;
             existing.realisasi += r.realisasi;
 
             r.subRows.forEach((sub) => {
               const subKey = `${sub.kode}:::${sub.ro.toLowerCase().trim()}`;
+
               const existingSub = existing.subRows.find((s) => `${s.kode}:::${s.ro.toLowerCase().trim()}` === subKey);
+
               if (existingSub) {
                 existingSub.anggaran += sub.anggaran;
+
                 existingSub.realisasi += sub.realisasi;
               } else {
-                existing.subRows.push({ ...sub });
+                existing.subRows.push({
+                  ...sub,
+                });
               }
             });
           } else {
-            mergedMap.set(key, { ...r, subRows: [...r.subRows] });
+            mergedMap.set(key, {
+              ...r,
+              subRows: [...r.subRows],
+            });
           }
         });
 
-        const finalUnifiedRows = Array.from(mergedMap.values()).sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" }));
-        finalUnifiedRows.forEach((r) => r.subRows.sort((a, b) => a.kode.localeCompare(b.kode, undefined, { numeric: true, sensitivity: "base" })));
+        const finalUnifiedRows = Array.from(mergedMap.values()).sort((a, b) =>
+          a.kode.localeCompare(b.kode, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        );
+
+        finalUnifiedRows.forEach((r) => {
+          r.subRows.sort((a, b) =>
+            a.kode.localeCompare(b.kode, undefined, {
+              numeric: true,
+              sensitivity: "base",
+            }),
+          );
+        });
 
         result.push({
           modul: "UPTP",
@@ -583,15 +1135,32 @@ export async function getRincianAnggaran() {
       return result;
     };
 
-    return { success: true, data: { abt: formatData("ABT"), nonAbt: formatData("NON-ABT") } };
+    return {
+      success: true,
+      data: {
+        abt: formatData("ABT"),
+        nonAbt: formatData("NON-ABT"),
+      },
+    };
   } catch (error: unknown) {
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Gagal mengambil data dari database" };
-  }
-} 
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
 
-// --- Fungsi Upsert (Penyimpanan Massal Nilai Anggaran Saja) ---
-// --- Fungsi Upsert (Penyimpanan Massal Nilai Anggaran Saja) ---
+    return {
+      success: false,
+      error: "Gagal mengambil data dari database",
+    };
+  }
+}
+
+// ============================================================
+// SIMPAN BULK RINCIAN ANGGARAN
+// ============================================================
+
 export async function simpanBulkRincianAnggaran(
   payload: {
     id: string;
@@ -611,9 +1180,6 @@ export async function simpanBulkRincianAnggaran(
 ) {
   try {
     for (const item of payload) {
-      // ==========================================
-      // 1. COBA UPDATE DATA YANG SUDAH ADA
-      // ==========================================
       const res = await sql`
         UPDATE rincian_output
         SET
@@ -625,9 +1191,6 @@ export async function simpanBulkRincianAnggaran(
         RETURNING id
       `;
 
-      // ==========================================
-      // 2. JIKA BELUM ADA → INSERT DATA BARU
-      // ==========================================
       if (res.length === 0 && item.fallbackInsert) {
         await sql`
           INSERT INTO rincian_output (
@@ -677,15 +1240,38 @@ export async function simpanBulkRincianAnggaran(
   }
 }
 
+// ============================================================
+// DASHBOARD
+// ============================================================
+
 export type DashboardMetrics = {
   paket: number;
   orang: number;
   realisasiOrang: number;
   anggaran: number;
 };
-export type DashboardSubRow = { id: string; kode: string; ro: string; abt: DashboardMetrics; nonAbt: DashboardMetrics };
-export type DashboardRow = { id: string; kode: string; ro: string; abt: DashboardMetrics; nonAbt: DashboardMetrics; subRows: DashboardSubRow[] };
-export type DashboardGroupData = { groupName: string; rows: DashboardRow[] };
+
+export type DashboardSubRow = {
+  id: string;
+  kode: string;
+  ro: string;
+  abt: DashboardMetrics;
+  nonAbt: DashboardMetrics;
+};
+
+export type DashboardRow = {
+  id: string;
+  kode: string;
+  ro: string;
+  abt: DashboardMetrics;
+  nonAbt: DashboardMetrics;
+  subRows: DashboardSubRow[];
+};
+
+export type DashboardGroupData = {
+  groupName: string;
+  rows: DashboardRow[];
+};
 
 type RawRow = {
   id: string;
@@ -710,27 +1296,15 @@ type RawRow = {
   target_orang?: number;
 };
 
-// --- Fungsi Read Khusus Dashboard ---
 export async function getDashboardRekapan() {
   try {
-    // ============================================================
-    // 1. AMBIL DATA
-    // ============================================================
-
     const allData = (await sql`
       SELECT *
       FROM rincian_output
       ORDER BY created_at ASC
     `) as RawRow[];
 
-    // ============================================================
-    // 2. NORMALISASI
-    // ============================================================
-
     const normalized: RawRow[] = allData.map((d) => {
-      // ----------------------------------------------------------
-      // SATPEL
-      // ----------------------------------------------------------
       if (d.modul === "satpel" && d.data_satpel) {
         let paket = 0;
         let orang = 0;
@@ -764,10 +1338,6 @@ export async function getDashboardRekapan() {
 
     const nonAbtData = normalized.filter((d) => d.kategori === "NON-ABT");
 
-    // ============================================================
-    // 3. HELPER
-    // ============================================================
-
     const makeKey = (kode: string | null | undefined, ro: string | null | undefined) => {
       return `${(kode || "-").trim()}:::${(ro || "").trim().toLowerCase()}`;
     };
@@ -794,11 +1364,6 @@ export async function getDashboardRekapan() {
         }),
       );
     };
-
-    // ============================================================
-    // 4. STANDARD BUILDER
-    //    Untuk Sertifikasi dan Produktivitas
-    // ============================================================
 
     const buildStandardGroup = (modulNames: string[]): DashboardRow[] => {
       const abtParents = abtData.filter((d) => modulNames.includes(d.modul) && d.parent_id === null && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
@@ -883,49 +1448,22 @@ export async function getDashboardRekapan() {
       return sortRows(result);
     };
 
-    // ============================================================
-    // 5. SERTIFIKASI
-    // ============================================================
-
     const rowsSertif = buildStandardGroup(["sertifikasi", "sertifikasi-kompetensi"]);
 
-    // ============================================================
-    // 6. PRODUKTIVITAS
-    // ============================================================
-
     const rowsProd = buildStandardGroup(["produktivitas"]);
-
-    // ============================================================
-    // 7. BUILDER UPTP
-    // ============================================================
 
     const buildUptpMegaGroup = (): DashboardRow[] => {
       const ABT_MAIN_ID = "11111111-1111-1111-1111-111111111111";
 
       const NON_ABT_MAIN_ID = "22222222-2222-2222-2222-222222222222";
 
-      // ----------------------------------------------------------
-      // DATA UPTP
-      // ----------------------------------------------------------
-
       const uptpAbt = abtData.filter((d) => d.modul === "uptp" && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
 
       const uptpNonAbt = nonAbtData.filter((d) => d.modul === "uptp" && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
 
-      // ----------------------------------------------------------
-      // DATA SATPEL
-      // ----------------------------------------------------------
-
       const satpelAbt = abtData.filter((d) => d.modul === "satpel" && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
 
       const satpelNonAbt = nonAbtData.filter((d) => d.modul === "satpel" && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
-
-      // ----------------------------------------------------------
-      // DATA TMT / LPKS / BLKK
-      //
-      // Ketiganya dianggap SUB-RO dari:
-      // 4057.SCO.003 Bidang Industri dan Jasa
-      // ----------------------------------------------------------
 
       const integratedModules = ["tmt", "lpks", "blkk"];
 
@@ -933,25 +1471,13 @@ export async function getDashboardRekapan() {
 
       const integratedNonAbt = nonAbtData.filter((d) => integratedModules.includes(d.modul) && d.parent_id === null);
 
-      // ----------------------------------------------------------
-      // UPTD
-      // ----------------------------------------------------------
-
       const uptdAbt = abtData.filter((d) => d.modul === "uptd" && d.parent_id === null && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
 
       const uptdNonAbt = nonAbtData.filter((d) => d.modul === "uptd" && d.parent_id === null && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
 
-      // ----------------------------------------------------------
-      // PFLK
-      // ----------------------------------------------------------
-
       const pflkAbt = abtData.filter((d) => d.modul === "pflk" && d.parent_id === null && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
 
       const pflkNonAbt = nonAbtData.filter((d) => d.modul === "pflk" && d.parent_id === null && d.kode?.trim() !== "-" && d.nama_ro?.trim() !== "");
-
-      // ==========================================================
-      // 8. PARENT UPTP + SATPEL
-      // ==========================================================
 
       const uptpParentsAbt = uptpAbt.filter((d) => d.parent_id === null);
 
@@ -981,10 +1507,6 @@ export async function getDashboardRekapan() {
 
       const result: DashboardRow[] = [];
 
-      // ==========================================================
-      // 9. PROCESS SETIAP PARENT UPTP
-      // ==========================================================
-
       for (const key of parentKeys) {
         const abtUptpParent = uptpParentsAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
@@ -997,10 +1519,6 @@ export async function getDashboardRekapan() {
         const base = abtUptpParent || nonAbtUptpParent || abtSatpelParent || nonAbtSatpelParent;
 
         if (!base) continue;
-
-        // ========================================================
-        // 10. CHILD UPTP
-        // ========================================================
 
         const abtParentIds = uptpParentsAbt.filter((row) => makeKey(row.kode, row.nama_ro) === key).map((row) => row.id);
 
@@ -1018,10 +1536,6 @@ export async function getDashboardRekapan() {
 
         const satpelChildrenNonAbt = satpelNonAbt.filter((row) => row.parent_id !== null && nonAbtSatpelParentIds.includes(row.parent_id));
 
-        // ========================================================
-        // 11. CHILD KEY UPTP + SATPEL
-        // ========================================================
-
         const childKeys = new Set<string>();
 
         [...uptpChildrenAbt, ...uptpChildrenNonAbt, ...satpelChildrenAbt, ...satpelChildrenNonAbt].forEach((row) => {
@@ -1031,12 +1545,6 @@ export async function getDashboardRekapan() {
         });
 
         const subRows: DashboardSubRow[] = [];
-
-        // ========================================================
-        // 12. MASUKKAN TMT / LPKS / BLKK
-        //
-        // HANYA untuk parent 4057.SCO.003
-        // ========================================================
 
         const isBidangIndustriJasa = key === makeKey("4057.SCO.003", "Bidang Industri dan Jasa");
 
@@ -1059,12 +1567,6 @@ export async function getDashboardRekapan() {
             });
           }
         }
-
-        // ========================================================
-        // 13. MERGE CHILD UPTP + SATPEL
-        //
-        // HANYA jika kode + nama_ro sama.
-        // ========================================================
 
         for (const childKey of childKeys) {
           const abtUptpChild = uptpChildrenAbt.find((row) => makeKey(row.kode, row.nama_ro) === childKey);
@@ -1094,10 +1596,6 @@ export async function getDashboardRekapan() {
 
         sortRows(subRows);
 
-        // ========================================================
-        // 14. PARENT UPTP + SATPEL
-        // ========================================================
-
         const abtParentMetrics = addMetrics(getMetrics(abtUptpParent), getMetrics(abtSatpelParent));
 
         const nonAbtParentMetrics = addMetrics(getMetrics(nonAbtUptpParent), getMetrics(nonAbtSatpelParent));
@@ -1112,9 +1610,9 @@ export async function getDashboardRekapan() {
         });
       }
 
-      // ==========================================================
-      // 15. TAMBAHKAN UPTD
-      // ==========================================================
+      // ======================================================
+      // UPTD
+      // ======================================================
 
       const uptdKeys = new Set<string>();
 
@@ -1145,9 +1643,9 @@ export async function getDashboardRekapan() {
         });
       }
 
-      // ==========================================================
-      // 16. TAMBAHKAN PFLK
-      // ==========================================================
+      // ======================================================
+      // PFLK
+      // ======================================================
 
       const pflkKeys = new Set<string>();
 
@@ -1178,10 +1676,6 @@ export async function getDashboardRekapan() {
         });
       }
 
-      // ==========================================================
-      // 17. URUTAN DATA
-      // ==========================================================
-
       const isUptd = (row: DashboardRow) => uptdAbt.some((r) => makeKey(r.kode, r.nama_ro) === makeKey(row.kode, row.ro)) || uptdNonAbt.some((r) => makeKey(r.kode, r.nama_ro) === makeKey(row.kode, row.ro));
 
       const isPflk = (row: DashboardRow) => pflkAbt.some((r) => makeKey(r.kode, r.nama_ro) === makeKey(row.kode, row.ro)) || pflkNonAbt.some((r) => makeKey(r.kode, r.nama_ro) === makeKey(row.kode, row.ro));
@@ -1203,10 +1697,6 @@ export async function getDashboardRekapan() {
 
       return result;
     };
-
-    // ============================================================
-    // 18. RETURN
-    // ============================================================
 
     return {
       success: true,
@@ -1242,9 +1732,8 @@ export async function getDashboardRekapan() {
   }
 }
 
-
 // ============================================================
-// MODUL non_apbn (INDEPENDEN)
+// NON APBN
 // ============================================================
 
 export type MenuNonAPBNRowData = {
@@ -1255,28 +1744,66 @@ export type MenuNonAPBNRowData = {
 
 export async function getMenuNonAPBN() {
   try {
-    const data = await sql`SELECT * FROM non_apbn ORDER BY created_at ASC`;
-    return { success: true, data: data as MenuNonAPBNRowData[] };
+    const data = await sql`
+      SELECT *
+      FROM non_apbn
+      ORDER BY created_at ASC
+    `;
+
+    return {
+      success: true,
+      data: data as MenuNonAPBNRowData[],
+    };
   } catch (error: unknown) {
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Gagal mengambil data dari database" };
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Gagal mengambil data dari database",
+    };
   }
 }
 
 export async function simpanBulkMenuNonAPBN(payload: MenuNonAPBNRowData[]) {
   try {
-    // Pendekatan sinkronisasi penuh: Hapus data lama, masukkan data baru dari UI
-    await sql`DELETE FROM non_apbn`;
-    
+    await sql`
+      DELETE FROM non_apbn
+    `;
+
     for (const item of payload) {
       await sql`
-        INSERT INTO non_apbn (id, realisasi_paket, realisasi_orang)
-        VALUES (${item.id}, ${item.realisasi_paket}, ${item.realisasi_orang})
+        INSERT INTO non_apbn (
+          id,
+          realisasi_paket,
+          realisasi_orang
+        )
+        VALUES (
+          ${item.id},
+          ${item.realisasi_paket},
+          ${item.realisasi_orang}
+        )
       `;
     }
-    return { success: true };
+
+    return {
+      success: true,
+    };
   } catch (error: unknown) {
-    if (error instanceof Error) return { success: false, error: error.message };
-    return { success: false, error: "Terjadi kesalahan saat menyimpan data NON APBN." };
+    if (error instanceof Error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: false,
+      error: "Terjadi kesalahan saat menyimpan data NON APBN.",
+    };
   }
 }

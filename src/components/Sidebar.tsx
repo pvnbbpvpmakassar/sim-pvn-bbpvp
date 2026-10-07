@@ -33,6 +33,7 @@ const nonAbtSubMenuList = [
   { name: "UPTD", slug: "uptd" },
   { name: "PFLK", slug: "pflk" },
   { name: "Produktivitas", slug: "produktivitas" },
+  { name: "Non Batch", slug: "non-batch" },
 ];
 
 const menuItems = [
