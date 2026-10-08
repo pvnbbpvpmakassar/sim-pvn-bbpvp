@@ -83,13 +83,10 @@ export default function SertifikasiKompetensiPage() {
               orang: 0,
               realisasiPaket: 0,
               realisasiOrang: 0,
-              subRows: [
-                ...row.subRows,
-                { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, orang: 0, realisasiPaket: 0, realisasiOrang: 0 },
-              ],
+              subRows: [...row.subRows, { id: crypto.randomUUID(), kode: "-", ro: "-", paket: 0, orang: 0, realisasiPaket: 0, realisasiOrang: 0 }],
             }
-          : row
-      )
+          : row,
+      ),
     );
   };
 
@@ -131,17 +128,10 @@ export default function SertifikasiKompetensiPage() {
     });
   };
 
-  const updateBarisUtama = (id: string, field: keyof Row, value: string | number) =>
-    setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+  const updateBarisUtama = (id: string, field: keyof Row, value: string | number) => setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
 
   const updateSubBaris = (parentId: string, subId: string, field: keyof SubRow, value: string | number) =>
-    setRows(
-      rows.map((row) =>
-        row.id === parentId
-          ? { ...row, subRows: row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub)) }
-          : row
-      )
-    );
+    setRows(rows.map((row) => (row.id === parentId ? { ...row, subRows: row.subRows.map((sub) => (sub.id === subId ? { ...sub, [field]: value } : sub)) } : row)));
 
   const totalPaket = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.paket || 0), 0) : row.paket || 0), 0);
   const totalOrang = rows.reduce((sum, row) => sum + (row.subRows.length > 0 ? row.subRows.reduce((acc, sub) => acc + (sub.orang || 0), 0) : row.orang || 0), 0);
@@ -198,7 +188,7 @@ export default function SertifikasiKompetensiPage() {
       const orang = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.orang || 0), 0) : row.orang;
       const realisasiPaket = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.realisasiPaket || 0), 0) : row.realisasiPaket;
       const realisasiOrang = hasSub ? row.subRows.reduce((acc, sub) => acc + (sub.realisasiOrang || 0), 0) : row.realisasiOrang;
-      
+
       const persenPaket = hitungPersen(realisasiPaket, paket);
       const persenOrang = hitungPersen(realisasiOrang, orang);
 
@@ -222,7 +212,7 @@ export default function SertifikasiKompetensiPage() {
       row.subRows.forEach((sub) => {
         const subPersenPaket = hitungPersen(sub.realisasiPaket, sub.paket);
         const subPersenOrang = hitungPersen(sub.realisasiOrang, sub.orang);
-        
+
         const subRow = worksheet.addRow({
           no: "",
           kode: sub.kode,
@@ -285,8 +275,13 @@ export default function SertifikasiKompetensiPage() {
           <div className="w-2 rounded-full bg-[#15406A] animate-[loadingBar_1s_ease-in-out_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/80 animate-[loadingBar_1s_ease-in-out_0.15s_infinite]" />
           <div className="w-2 rounded-full bg-[#15406A]/60 animate-[loadingBar_1s_ease-in-out_0.3s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/40 animate-[loadingBar_1s_ease-in-out_0.45s_infinite]" />
+          <div className="w-2 rounded-full bg-[#15406A]/30 animate-[loadingBar_1s_ease-in-out_0.6s_infinite]" />
         </div>
+
         <p className="text-sm font-semibold text-[#15406A]">Memuat data Sertifikasi Kompetensi</p>
+
+        <p className="mt-1 text-xs text-slate-400">Menghubungkan ke database...</p>
       </div>
     );
   }
@@ -467,7 +462,7 @@ export default function SertifikasiKompetensiPage() {
                       {row.subRows.map((sub) => {
                         const subPersenPaket = hitungPersen(sub.realisasiPaket, sub.paket);
                         const subPersenOrang = hitungPersen(sub.realisasiOrang, sub.orang);
-                        
+
                         return (
                           <tr key={sub.id} className="border-b border-gray-100 hover:bg-blue-50/30">
                             <td className="border-r border-gray-200 bg-gray-50"></td>

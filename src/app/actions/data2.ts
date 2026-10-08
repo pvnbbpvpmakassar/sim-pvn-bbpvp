@@ -1250,7 +1250,6 @@ export type DashboardMetrics = {
   realisasiPaket: number;
   realisasiOrang: number;
   anggaran: number;
-  realisasiAnggaran: number;
 };
 
 export type DashboardSubRow = {
@@ -1406,7 +1405,6 @@ export async function getDashboardRekapan() {
           realisasi_orang: realisasiOrang,
 
           anggaran: toDsa(row.anggaran),
-          realisasi_anggaran: toDsa(row.realisasi_anggaran),
         };
       }
 
@@ -1426,7 +1424,6 @@ export async function getDashboardRekapan() {
         realisasi_orang: toDsa(row.realisasi_orang),
 
         anggaran: toDsa(row.anggaran),
-        realisasi_anggaran: toDsa(row.realisasi_anggaran),
       };
     });
 
@@ -1463,7 +1460,6 @@ export async function getDashboardRekapan() {
         ),
 
         anggaran: toDsa(row?.anggaran),
-        realisasiAnggaran: toDsa(row?.realisasi_anggaran),
       };
     };
 
@@ -1487,10 +1483,6 @@ export async function getDashboardRekapan() {
         anggaran:
           a.anggaran +
           b.anggaran,
-
-        realisasiAnggaran:
-          a.realisasiAnggaran +
-          b.realisasiAnggaran,
       };
     };
 

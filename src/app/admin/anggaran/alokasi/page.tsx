@@ -18,9 +18,9 @@ export default function AlokasiAnggaranPage() {
   const [modal, setModal] = useState<ModalConfig>({ isOpen: false, type: "confirm", title: "", message: "" });
 
   const closeModal = () => setModal({ ...modal, isOpen: false });
-  
+
   const formatRp = (value: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(value);
-  const formatInputAngka = (value: number) => value === 0 ? "" : new Intl.NumberFormat("id-ID").format(value);
+  const formatInputAngka = (value: number) => (value === 0 ? "" : new Intl.NumberFormat("id-ID").format(value));
 
   const hitungPersen = (realisasi: number, anggaran: number) => {
     const real = Number(realisasi) || 0;
@@ -32,7 +32,7 @@ export default function AlokasiAnggaranPage() {
     const fetchData = async () => {
       setIsLoading(true);
       const res = await getAlokasiAnggaran();
-      
+
       if (res.success && res.data) {
         setRowsABT(res.data.abt);
         setRowsNONABT(res.data.nonAbt);
@@ -48,33 +48,71 @@ export default function AlokasiAnggaranPage() {
   const handleAngkaChange = (valStr: string, id: string, field: "anggaran" | "realisasi", kategori: "ABT" | "NON-ABT" | "LAINNYA") => {
     const rawValue = valStr.replace(/[^0-9]/g, "");
     const numValue = rawValue ? parseInt(rawValue, 10) : 0;
-    
+
     if (kategori === "ABT") {
-      setRowsABT(rowsABT.map(r => r.id === id ? { ...r, [field]: numValue } : r));
+      setRowsABT(rowsABT.map((r) => (r.id === id ? { ...r, [field]: numValue } : r)));
     } else if (kategori === "NON-ABT") {
-      setRowsNONABT(rowsNONABT.map(r => r.id === id ? { ...r, [field]: numValue } : r));
+      setRowsNONABT(rowsNONABT.map((r) => (r.id === id ? { ...r, [field]: numValue } : r)));
     } else {
-      setRowsLainnya(rowsLainnya.map(r => r.id === id ? { ...r, [field]: numValue } : r));
+      setRowsLainnya(rowsLainnya.map((r) => (r.id === id ? { ...r, [field]: numValue } : r)));
     }
   };
 
   // --- Manipulasi State Tabel ---
   const tambahABT = () => setRowsABT([...rowsABT, { id: crypto.randomUUID(), nama_modul: "", anggaran: 0, realisasi: 0 }]);
-  const hapusABT = (id: string) => setModal({ isOpen: true, type: "confirm", title: "Hapus Baris?", message: "Hapus alokasi ini?", onConfirm: () => { setRowsABT(rowsABT.filter(r => r.id !== id)); closeModal(); } });
-  const updateTextABT = (id: string, value: string) => setRowsABT(rowsABT.map(r => r.id === id ? { ...r, nama_modul: value } : r));
+  const hapusABT = (id: string) =>
+    setModal({
+      isOpen: true,
+      type: "confirm",
+      title: "Hapus Baris?",
+      message: "Hapus alokasi ini?",
+      onConfirm: () => {
+        setRowsABT(rowsABT.filter((r) => r.id !== id));
+        closeModal();
+      },
+    });
+  const updateTextABT = (id: string, value: string) => setRowsABT(rowsABT.map((r) => (r.id === id ? { ...r, nama_modul: value } : r)));
 
   const tambahNONABT = () => setRowsNONABT([...rowsNONABT, { id: crypto.randomUUID(), nama_modul: "", anggaran: 0, realisasi: 0 }]);
-  const hapusNONABT = (id: string) => setModal({ isOpen: true, type: "confirm", title: "Hapus Baris?", message: "Hapus alokasi ini?", onConfirm: () => { setRowsNONABT(rowsNONABT.filter(r => r.id !== id)); closeModal(); } });
-  const updateTextNONABT = (id: string, value: string) => setRowsNONABT(rowsNONABT.map(r => r.id === id ? { ...r, nama_modul: value } : r));
+  const hapusNONABT = (id: string) =>
+    setModal({
+      isOpen: true,
+      type: "confirm",
+      title: "Hapus Baris?",
+      message: "Hapus alokasi ini?",
+      onConfirm: () => {
+        setRowsNONABT(rowsNONABT.filter((r) => r.id !== id));
+        closeModal();
+      },
+    });
+  const updateTextNONABT = (id: string, value: string) => setRowsNONABT(rowsNONABT.map((r) => (r.id === id ? { ...r, nama_modul: value } : r)));
 
   const tambahLainnya = () => setRowsLainnya([...rowsLainnya, { id: crypto.randomUUID(), nama_modul: "", anggaran: 0, realisasi: 0 }]);
-  const hapusLainnya = (id: string) => setModal({ isOpen: true, type: "confirm", title: "Hapus Baris?", message: "Hapus anggaran ini?", onConfirm: () => { setRowsLainnya(rowsLainnya.filter(r => r.id !== id)); closeModal(); } });
-  const updateTextLainnya = (id: string, value: string) => setRowsLainnya(rowsLainnya.map(r => r.id === id ? { ...r, nama_modul: value } : r));
+  const hapusLainnya = (id: string) =>
+    setModal({
+      isOpen: true,
+      type: "confirm",
+      title: "Hapus Baris?",
+      message: "Hapus anggaran ini?",
+      onConfirm: () => {
+        setRowsLainnya(rowsLainnya.filter((r) => r.id !== id));
+        closeModal();
+      },
+    });
+  const updateTextLainnya = (id: string, value: string) => setRowsLainnya(rowsLainnya.map((r) => (r.id === id ? { ...r, nama_modul: value } : r)));
 
   const bersihkanTabel = () => {
     setModal({
-      isOpen: true, type: "confirm", title: "Bersihkan Semua Tabel?", message: "Hapus semua data di seluruh tabel pada layar ini?",
-      onConfirm: () => { setRowsABT([]); setRowsNONABT([]); setRowsLainnya([]); closeModal(); }
+      isOpen: true,
+      type: "confirm",
+      title: "Bersihkan Semua Tabel?",
+      message: "Hapus semua data di seluruh tabel pada layar ini?",
+      onConfirm: () => {
+        setRowsABT([]);
+        setRowsNONABT([]);
+        setRowsLainnya([]);
+        closeModal();
+      },
     });
   };
 
@@ -82,7 +120,7 @@ export default function AlokasiAnggaranPage() {
     setIsSaving(true);
     // Simpan ketiga array ke database
     const result = await simpanBulkAlokasiAnggaran(rowsABT, rowsNONABT, rowsLainnya);
-    
+
     if (result.success) {
       setModal({ isOpen: true, type: "success", title: "Berhasil", message: "Data Alokasi Anggaran berhasil disimpan ke Database!" });
     } else {
@@ -115,49 +153,53 @@ export default function AlokasiAnggaranPage() {
             </thead>
             <tbody className="text-gray-700">
               {rows.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Tabel {title} kosong. Klik Tambah Modul untuk memulai.</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                    Tabel {title} kosong. Klik Tambah Modul untuk memulai.
+                  </td>
+                </tr>
               ) : (
                 rows.map((row, index) => (
                   <tr key={row.id} className="border-b border-gray-200 hover:bg-blue-50/30 transition-colors">
                     <td className="border-r border-gray-200 px-4 py-2 text-center font-semibold">{index + 1}</td>
                     <td className="border-r border-gray-200 p-0">
-                      <input 
-                        type="text" 
-                        value={row.nama_modul} 
-                        onChange={(e) => updateTextFn(row.id, e.target.value)} 
-                        className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white font-medium text-[#15406A]" 
-                        placeholder="Contoh: Sertifikasi Kompetensi" 
+                      <input
+                        type="text"
+                        value={row.nama_modul}
+                        onChange={(e) => updateTextFn(row.id, e.target.value)}
+                        className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white font-medium text-[#15406A]"
+                        placeholder="Contoh: Sertifikasi Kompetensi"
                       />
                     </td>
                     <td className="border-r border-gray-200 p-0">
                       <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
                         <span className="pl-4 py-3 text-gray-400 font-medium">Rp</span>
-                        <input 
-                          type="text" 
-                          value={formatInputAngka(row.anggaran)} 
-                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "anggaran", kategori)} 
-                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700" 
-                          placeholder="0" 
+                        <input
+                          type="text"
+                          value={formatInputAngka(row.anggaran)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "anggaran", kategori)}
+                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700"
+                          placeholder="0"
                         />
                       </div>
                     </td>
                     <td className="border-r border-gray-200 p-0">
                       <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
                         <span className="pl-4 py-3 text-gray-400 font-medium">Rp</span>
-                        <input 
-                          type="text" 
-                          value={formatInputAngka(row.realisasi)} 
-                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi", kategori)} 
-                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700" 
-                          placeholder="0" 
+                        <input
+                          type="text"
+                          value={formatInputAngka(row.realisasi)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi", kategori)}
+                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700"
+                          placeholder="0"
                         />
                       </div>
                     </td>
-                    <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50 text-[#15406A] font-bold text-base">
-                      {hitungPersen(row.realisasi, row.anggaran)}%
-                    </td>
+                    <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50 text-[#15406A] font-bold text-base">{hitungPersen(row.realisasi, row.anggaran)}%</td>
                     <td className="px-4 py-2 text-center">
-                      <button onClick={() => hapusFn(row.id)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => hapusFn(row.id)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -166,7 +208,9 @@ export default function AlokasiAnggaranPage() {
             {rows.length > 0 && (
               <tfoot className="bg-amber-400 text-white font-bold tracking-wide">
                 <tr>
-                  <td colSpan={2} className="border border-[#1a4e82] px-4 py-4 text-right uppercase">Jumlah Total {title}</td>
+                  <td colSpan={2} className="border border-[#1a4e82] px-4 py-4 text-right uppercase">
+                    Jumlah Total {title}
+                  </td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-right bg-amber-500 text-[15px]">{formatRp(totalAnggaran)}</td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-right bg-amber-500 text-emerald-100 text-[15px]">{formatRp(totalRealisasi)}</td>
                   <td className="border border-[#1a4e82] px-4 py-4 text-center text-blue-900 text-base">{hitungPersen(totalRealisasi, totalAnggaran)}%</td>
@@ -186,73 +230,130 @@ export default function AlokasiAnggaranPage() {
   };
 
   // --- Komponen Render Tabel Anggaran Lainnya (Tanpa Realisasi) ---
+
+  // --- Komponen Render Tabel Anggaran Lainnya ---
   const renderTableLainnya = () => {
-    const totalAnggaran = rowsLainnya.reduce((sum, r) => sum + r.anggaran, 0);
+    const totalAnggaran = rowsLainnya.reduce((sum, r) => sum + Number(r.anggaran || 0), 0);
+
+    const totalRealisasi = rowsLainnya.reduce((sum, r) => sum + Number(r.realisasi || 0), 0);
 
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
         <div className="bg-emerald-700 px-6 py-4 flex justify-between items-center">
           <h2 className="text-lg font-bold text-white uppercase tracking-wide">ANGGARAN LAINNYA</h2>
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left border-collapse">
             <thead className="bg-emerald-800 text-white">
               <tr>
                 <th className="border border-emerald-900 px-4 py-3 text-center w-16">NO.</th>
+
                 <th className="border border-emerald-900 px-4 py-3 min-w-[250px]">Keterangan (Nama Alokasi)</th>
-                <th className="border border-emerald-900 px-4 py-3 text-center w-64">Jumlah Anggaran (Rp.)</th>
+
+                <th className="border border-emerald-900 px-4 py-3 text-center w-48">Anggaran (Rp.)</th>
+
+                <th className="border border-emerald-900 px-4 py-3 text-center w-48">Realisasi (Rp.)</th>
+
+                <th className="border border-emerald-900 px-4 py-3 text-center w-32">Persentase (%)</th>
+
                 <th className="border border-emerald-900 px-4 py-3 text-center w-24">Aksi</th>
               </tr>
             </thead>
+
             <tbody className="text-gray-700">
               {rowsLainnya.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Tabel Anggaran Lainnya kosong. Klik Tambah untuk memulai.</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                    Tabel Anggaran Lainnya kosong. Klik Tambah untuk memulai.
+                  </td>
+                </tr>
               ) : (
                 rowsLainnya.map((row, index) => (
                   <tr key={row.id} className="border-b border-gray-200 hover:bg-emerald-50/30 transition-colors">
                     <td className="border-r border-gray-200 px-4 py-2 text-center font-semibold">{index + 1}</td>
+
                     <td className="border-r border-gray-200 p-0">
-                      <input 
-                        type="text" 
-                        value={row.nama_modul} 
-                        onChange={(e) => updateTextLainnya(row.id, e.target.value)} 
-                        className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white font-medium text-emerald-800" 
-                        placeholder="Contoh: Biaya Operasional Tambahan" 
+                      <input
+                        type="text"
+                        value={row.nama_modul}
+                        onChange={(e) => updateTextLainnya(row.id, e.target.value)}
+                        className="w-full h-full px-4 py-3 bg-transparent outline-none focus:bg-white font-medium text-emerald-800"
+                        placeholder="Contoh: Biaya Operasional Tambahan"
                       />
                     </td>
+
+                    {/* ANGGARAN */}
                     <td className="border-r border-gray-200 p-0">
                       <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
                         <span className="pl-4 py-3 text-gray-400 font-medium">Rp</span>
-                        <input 
-                          type="text" 
-                          value={formatInputAngka(row.anggaran)} 
-                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "anggaran", "LAINNYA")} 
-                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700" 
-                          placeholder="0" 
+
+                        <input
+                          type="text"
+                          value={formatInputAngka(row.anggaran)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "anggaran", "LAINNYA")}
+                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700"
+                          placeholder="0"
                         />
                       </div>
                     </td>
+
+                    {/* REALISASI */}
+                    <td className="border-r border-gray-200 p-0">
+                      <div className="flex w-full h-full bg-transparent focus-within:bg-white transition-colors">
+                        <span className="pl-4 py-3 text-gray-400 font-medium">Rp</span>
+
+                        <input
+                          type="text"
+                          value={formatInputAngka(row.realisasi)}
+                          onChange={(e) => handleAngkaChange(e.target.value, row.id, "realisasi", "LAINNYA")}
+                          className="w-full h-full px-4 py-3 text-right bg-transparent outline-none font-bold text-gray-700"
+                          placeholder="0"
+                        />
+                      </div>
+                    </td>
+
+                    {/* PERSENTASE */}
+                    <td className="border-r border-gray-200 px-4 py-3 text-center bg-gray-50 text-[#15406A] font-bold text-base">{hitungPersen(row.realisasi, row.anggaran)}%</td>
+
+                    {/* AKSI */}
                     <td className="px-4 py-2 text-center">
-                      <button onClick={() => hapusLainnya(row.id)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => hapusLainnya(row.id)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
+
             {rowsLainnya.length > 0 && (
               <tfoot className="bg-amber-400 text-white font-bold tracking-wide">
                 <tr>
-                  <td colSpan={2} className="border border-amber-500 px-4 py-4 text-right uppercase">Total Anggaran Lainnya</td>
+                  <td colSpan={2} className="border border-amber-500 px-4 py-4 text-right uppercase">
+                    Total Anggaran Lainnya
+                  </td>
+
+                  {/* TOTAL ANGGARAN */}
                   <td className="border border-amber-500 px-4 py-4 text-right bg-amber-500 text-[15px]">{formatRp(totalAnggaran)}</td>
+
+                  {/* TOTAL REALISASI */}
+                  <td className="border border-amber-500 px-4 py-4 text-right bg-amber-500 text-emerald-100 text-[15px]">{formatRp(totalRealisasi)}</td>
+
+                  {/* TOTAL PERSENTASE */}
+                  <td className="border border-amber-500 px-4 py-4 text-center text-blue-900 text-base">{hitungPersen(totalRealisasi, totalAnggaran)}%</td>
+
                   <td className="border border-amber-500 bg-amber-400"></td>
                 </tr>
               </tfoot>
             )}
           </table>
         </div>
+
         <div className="bg-gray-50 p-4 border-t border-gray-200">
           <button onClick={tambahLainnya} className="flex items-center gap-2 text-sm font-bold text-emerald-700 hover:text-emerald-900 transition-colors">
-            <Plus className="w-5 h-5" /> Tambah Anggaran Lainnya
+            <Plus className="w-5 h-5" />
+            Tambah Anggaran Lainnya
           </button>
         </div>
       </div>
@@ -291,11 +392,17 @@ export default function AlokasiAnggaranPage() {
               <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
                 {modal.type === "confirm" ? (
                   <>
-                    <button onClick={closeModal} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 transition-colors">Batal</button>
-                    <button onClick={modal.onConfirm} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-[#15406A] hover:bg-blue-900 transition-colors">Ya, Lanjutkan</button>
+                    <button onClick={closeModal} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 transition-colors">
+                      Batal
+                    </button>
+                    <button onClick={modal.onConfirm} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-[#15406A] hover:bg-blue-900 transition-colors">
+                      Ya, Lanjutkan
+                    </button>
                   </>
                 ) : (
-                  <button onClick={closeModal} className={`px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors ${modal.type === "error" ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>Tutup</button>
+                  <button onClick={closeModal} className={`px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-colors ${modal.type === "error" ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                    Tutup
+                  </button>
                 )}
               </div>
             </motion.div>
@@ -309,13 +416,15 @@ export default function AlokasiAnggaranPage() {
           <p className="text-gray-500 text-sm mt-1">Kelola distribusi anggaran utama untuk setiap modul dan pengeluaran lainnya.</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={bersihkanTabel} className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-lg font-medium border border-red-200 transition-colors hover:bg-red-100"><RefreshCw className="w-4 h-4" /> Bersihkan</button>
+          <button onClick={bersihkanTabel} className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-lg font-medium border border-red-200 transition-colors hover:bg-red-100">
+            <RefreshCw className="w-4 h-4" /> Bersihkan
+          </button>
         </div>
       </div>
 
       {renderTable("ABT", rowsABT, tambahABT, hapusABT, updateTextABT, "ABT")}
       {renderTable("NON-ABT", rowsNONABT, tambahNONABT, hapusNONABT, updateTextNONABT, "NON-ABT")}
-      
+
       {/* Tampilan Tabel Anggaran Lainnya */}
       {renderTableLainnya()}
 

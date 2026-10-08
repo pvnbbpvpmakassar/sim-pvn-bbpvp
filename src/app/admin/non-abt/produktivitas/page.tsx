@@ -856,11 +856,11 @@ export default function ProduktivitasKompetensiPage() {
               </tr>
 
               <tr>
-                <th className="border border-[#1a4e82] bg-[#184878] px-4 py-2 text-center">Target Orang</th>
+                <th className="border border-[#1a4e82] px-4 py-2 text-center bg-[#184878] w-32">Target Orang</th>
 
-                <th className="w-28 border border-[#1a4e82] bg-[#184878] px-4 py-3 text-center">Realisasi</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-32">Realisasi Orang</th>
 
-                <th className="w-28 border border-[#1a4e82] bg-[#184878] px-4 py-3 text-center">Persen (%)</th>
+                <th className="border border-[#1a4e82] px-4 py-3 text-center bg-[#184878] w-28">Capaian (%)</th>
               </tr>
             </thead>
 
