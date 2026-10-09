@@ -1352,9 +1352,6 @@ const makeKey = (
 
 export async function getDashboardRekapan() {
   try {
-    // ========================================================
-    // 1. AMBIL SEMUA DATA
-    // ========================================================
 
     const allData = (await sql`
       SELECT *
@@ -1362,14 +1359,7 @@ export async function getDashboardRekapan() {
       ORDER BY created_at ASC
     `) as RawRow[];
 
-    // ========================================================
-    // 2. NORMALISASI DATA
-    // ========================================================
-
     const normalized: RawRow[] = allData.map((row) => {
-      // ------------------------------------------------------
-      // SATPEL
-      // ------------------------------------------------------
 
       if (
         normalizeModul(row.modul) === "satpel" &&
@@ -1410,10 +1400,6 @@ export async function getDashboardRekapan() {
         };
       }
 
-      // ------------------------------------------------------
-      // DATA BIASA
-      // ------------------------------------------------------
-
       return {
         ...row,
 
@@ -1430,9 +1416,6 @@ export async function getDashboardRekapan() {
       };
     });
 
-    // ========================================================
-    // 3. PISAHKAN ABT DAN NON-ABT
-    // ========================================================
 
     const abtData = normalized.filter(
       (row) => row.kategori === "ABT",
@@ -1441,10 +1424,6 @@ export async function getDashboardRekapan() {
     const nonAbtData = normalized.filter(
       (row) => row.kategori === "NON-ABT",
     );
-
-    // ========================================================
-    // 4. METRICS
-    // ========================================================
 
     const getMetrics = (
       row?: RawRow,
@@ -1494,10 +1473,6 @@ export async function getDashboardRekapan() {
       };
     };
 
-    // ========================================================
-    // 5. SORT
-    // ========================================================
-
     const sortRows = <
       T extends {
         kode: string;
@@ -1516,10 +1491,6 @@ export async function getDashboardRekapan() {
         ),
       );
     };
-
-    // ========================================================
-    // 6. STANDARD GROUP
-    // ========================================================
 
     const buildStandardGroup = (
       modulNames: string[],
@@ -1726,35 +1697,22 @@ export async function getDashboardRekapan() {
       return sortRows(result);
     };
 
-    // ========================================================
-    // 7. SERTIFIKASI
-    // ========================================================
-
     const rowsSertif =
       buildStandardGroup([
         "sertifikasi",
         "sertifikasi-kompetensi",
       ]);
 
-    // ========================================================
-    // 8. PRODUKTIVITAS
-    // ========================================================
+
 
     const rowsProd =
       buildStandardGroup([
         "produktivitas",
       ]);
 
-    // ========================================================
-    // 9. UPTP MEGA GROUP
-    // ========================================================
-
     const buildUptpMegaGroup =
       (): DashboardRow[] => {
-        // ----------------------------------------------------
-        // UPTP
-        // ----------------------------------------------------
-
+ 
         const uptpAbt =
           abtData.filter(
             (row) =>
@@ -1773,9 +1731,6 @@ export async function getDashboardRekapan() {
               isValidRow(row),
           );
 
-        // ----------------------------------------------------
-        // SATPEL
-        // ----------------------------------------------------
 
         const satpelAbt =
           abtData.filter(
@@ -1794,10 +1749,6 @@ export async function getDashboardRekapan() {
               ) === "satpel" &&
               isValidRow(row),
           );
-
-        // ----------------------------------------------------
-        // TMT / LPKS / BLKK
-        // ----------------------------------------------------
 
         const integratedModules = [
           "tmt",
@@ -1827,10 +1778,6 @@ export async function getDashboardRekapan() {
               row.parent_id === null,
           );
 
-        // ----------------------------------------------------
-        // UPTD
-        // ----------------------------------------------------
-
         const uptdAbt =
           abtData.filter(
             (row) =>
@@ -1851,9 +1798,6 @@ export async function getDashboardRekapan() {
               isValidRow(row),
           );
 
-        // ----------------------------------------------------
-        // PFLK
-        // ----------------------------------------------------
 
         const pflkAbt =
           abtData.filter(
@@ -1875,14 +1819,6 @@ export async function getDashboardRekapan() {
               isValidRow(row),
           );
 
-        // ----------------------------------------------------
-        // NON-BATCH
-        //
-        // Dibuat persis seperti PFLK:
-        // parent_id harus null dan berdiri sendiri
-        // sebagai DashboardRow.
-        // ----------------------------------------------------
-
         const nonBatchAbt =
           abtData.filter(
             (row) =>
@@ -1903,9 +1839,6 @@ export async function getDashboardRekapan() {
               isValidNonBatchRow(row),
           );
 
-        // ----------------------------------------------------
-        // PARENT UPTP
-        // ----------------------------------------------------
 
         const uptpParentsAbt =
           uptpAbt.filter(
@@ -1975,9 +1908,6 @@ export async function getDashboardRekapan() {
         const result: DashboardRow[] =
           [];
 
-        // ====================================================
-        // UPTP + SATPEL
-        // ====================================================
 
         for (const key of parentKeys) {
           const abtUptpParent =
@@ -2148,10 +2078,6 @@ export async function getDashboardRekapan() {
           const subRows: DashboardSubRow[] =
             [];
 
-          // --------------------------------------------------
-          // INTEGRATED MODULE
-          // --------------------------------------------------
-
           const isBidangIndustriJasa =
             key ===
             makeKey(
@@ -2214,9 +2140,6 @@ export async function getDashboardRekapan() {
             }
           }
 
-          // --------------------------------------------------
-          // CHILD UPTP + SATPEL
-          // --------------------------------------------------
 
           for (const childKey of childKeys) {
             const abtUptpChild =
@@ -2343,9 +2266,6 @@ export async function getDashboardRekapan() {
           });
         }
 
-        // ====================================================
-        // UPTD
-        // ====================================================
 
         const uptdKeys =
           new Set<string>();
@@ -2417,11 +2337,6 @@ export async function getDashboardRekapan() {
           });
         }
 
-        // ====================================================
-        // PFLK
-        //
-        // PFLK berdiri sendiri seperti sebelumnya.
-        // ====================================================
 
         const pflkKeys =
           new Set<string>();
@@ -2493,11 +2408,6 @@ export async function getDashboardRekapan() {
           });
         }
 
-        // ====================================================
-        // NON-BATCH
-        //
-        // SENGAJA DIBUAT TERPISAH DAN PERSIS SEPERTI PFLK.
-        // ====================================================
 
         const nonBatchKeys =
           new Set<string>();
@@ -2569,10 +2479,6 @@ export async function getDashboardRekapan() {
             subRows: [],
           });
         }
-
-        // ====================================================
-        // SORT FINAL
-        // ====================================================
 
         const isUptd = (
           row: DashboardRow,
@@ -2694,9 +2600,6 @@ export async function getDashboardRekapan() {
         return result;
       };
 
-    // ========================================================
-    // 10. RETURN DATA DASHBOARD
-    // ========================================================
 
     return {
       success: true,

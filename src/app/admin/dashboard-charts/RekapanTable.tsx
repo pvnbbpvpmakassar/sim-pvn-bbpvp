@@ -1,454 +1,195 @@
 "use client";
-
-
-
 import React, { Fragment, useState, useEffect } from "react";
-
-
-
 import { Download, CornerDownRight } from "lucide-react";
-
-
-
 import ExcelJS from "exceljs";
-
 import { saveAs } from "file-saver";
-
-
-
 import { getAlokasiAnggaran, type AlokasiRowData } from "@/app/actions/data";
 
-
-
 export type DashboardMetrics = {
-
   paket: number;
-
   orang: number;
-
   realisasiPaket: number;
-
   realisasiOrang: number;
-
   anggaran: number;
-
   realisasiAnggaran: number;
 };
 
-
-
 export type DashboardSubRow = {
-
   id: string;
-
   kode: string;
-
   ro: string;
-
   abt: DashboardMetrics;
-
   nonAbt: DashboardMetrics;
-
 };
-
-
 
 export type DashboardRow = {
-
   id: string;
-
   kode: string;
-
   ro: string;
-
   abt: DashboardMetrics;
-
   nonAbt: DashboardMetrics;
-
   subRows: DashboardSubRow[];
-
 };
-
-
 
 export type DashboardGroupData = {
-
   groupName: string;
-
   rows: DashboardRow[];
-
 };
 
-
-
 interface RekapanTableProps {
-
   data: DashboardGroupData[];
-
 }
 
-
-
 export default function RekapanTable({ data }: RekapanTableProps) {
-  // ============================================================
-  // STATE
-  // ============================================================
-
-
 
   const [lainnyaData, setLainnyaData] = useState<AlokasiRowData[]>([]);
-  // ============================================================
-  // LOAD ANGGARAN LAINNYA
-  // ============================================================
-
-
 
   useEffect(() => {
-
     let cancelled = false;
-
-
-
     const fetchLainnya = async () => {
-
       try {
-
         const res = await getAlokasiAnggaran();
-
-
-
         if (!cancelled && res.success && res.data?.lainnya) {
-
           setLainnyaData(res.data.lainnya);
-
         }
-
       } catch (error) {
-
         console.error("Gagal memuat anggaran lainnya:", error);
-
       }
-
     };
-
-
 
     void fetchLainnya();
 
-
-
     return () => {
-
       cancelled = true;
-
     };
-
   }, []);
-  // ============================================================
-  // HELPERS
-  // ============================================================
-
-
 
   const hitungPersen = (realisasi: number, target: number) => {
     if (target <= 0) {
       return "0.00";
     }
-
     return ((realisasi / target) * 100).toFixed(2);
   };
 
-
-
   const formatRp = (value: number) => {
-
     return new Intl.NumberFormat("id-ID", {
-
       style: "currency",
-
       currency: "IDR",
-
       minimumFractionDigits: 0,
-
     }).format(value);
-
   };
-  // ============================================================
-  // HELPER REALISASI ANGGARAN LAINNYA
-  // ============================================================
-
-
 
   const getRealisasiLainnya = (item: AlokasiRowData): number => {
-
     const value = (
-
       item as AlokasiRowData & {
-
         realisasi?: number | null;
-
         realisasi_anggaran?: number | null;
-
       }
-
     ).realisasi;
 
-
-
     const fallback = (
-
       item as AlokasiRowData & {
-
         realisasi?: number | null;
-
         realisasi_anggaran?: number | null;
-
       }
-
     ).realisasi_anggaran;
 
-
-
     return Number(value ?? fallback ?? 0);
-
   };
-  // ============================================================
-  // HELPER MENGAMBIL TOTAL ROW
-  // ============================================================
-
-
 
   const getRowMetrics = (row: DashboardRow) => {
-
     const hasSub = row.subRows.length > 0;
-
-
-
     if (!hasSub) {
-
       return {
-
         abt: row.abt,
-
         nonAbt: row.nonAbt,
-
       };
-
     }
 
-
-
     const abt = row.subRows.reduce(
-
       (total, sub) => ({
-
         paket: total.paket + sub.abt.paket,
-
-
-
         orang: total.orang + sub.abt.orang,
-
-
-
         realisasiPaket: total.realisasiPaket + sub.abt.realisasiPaket,
-
-
-
         realisasiOrang: total.realisasiOrang + sub.abt.realisasiOrang,
-
-
-
         anggaran: total.anggaran + sub.abt.anggaran,
         realisasiAnggaran: total.realisasiAnggaran + sub.abt.realisasiAnggaran,
-
       }),
-
       {
-
         paket: 0,
-
         orang: 0,
-
         realisasiPaket: 0,
-
         realisasiOrang: 0,
-
         anggaran: 0,
-
         realisasiAnggaran: 0,
-
       },
-
     );
-
-
 
     const nonAbt = row.subRows.reduce(
-
       (total, sub) => ({
-
         paket: total.paket + sub.nonAbt.paket,
-
-
-
         orang: total.orang + sub.nonAbt.orang,
-
-
-
         realisasiPaket: total.realisasiPaket + sub.nonAbt.realisasiPaket,
-
-
-
         realisasiOrang: total.realisasiOrang + sub.nonAbt.realisasiOrang,
-
-
-
         anggaran: total.anggaran + sub.nonAbt.anggaran,
         realisasiAnggaran: total.realisasiAnggaran + sub.nonAbt.realisasiAnggaran,
-
       }),
-
       {
-
         paket: 0,
-
         orang: 0,
-
         realisasiPaket: 0,
-
         realisasiOrang: 0,
-
         anggaran: 0,
-
         realisasiAnggaran: 0,
-
       },
-
     );
 
-
-
     return {
-
       abt,
-
       nonAbt,
-
     };
-
   };
-  // ============================================================
-  // GRAND TOTAL
-  // ============================================================
-
-
 
   let grandTotalAbtP = 0;
-
   let grandTotalAbtO = 0;
-
   let grandTotalAbtRP = 0;
-
   let grandTotalAbtR = 0;
-
   let grandTotalAbtA = 0;
   let grandTotalAbtRA = 0;
-
-
-
   let grandTotalNonP = 0;
-
   let grandTotalNonO = 0;
-
   let grandTotalNonRP = 0;
-
   let grandTotalNonR = 0;
-
   let grandTotalNonA = 0;
   let grandTotalNonRA = 0;
 
-
-
   data.forEach((group) => {
-
     group.rows.forEach((row) => {
-
       const metrics = getRowMetrics(row);
-
-
-
       grandTotalAbtP += metrics.abt.paket;
-
-
-
       grandTotalAbtO += metrics.abt.orang;
-
-
-
       grandTotalAbtRP += metrics.abt.realisasiPaket;
-
-
-
       grandTotalAbtR += metrics.abt.realisasiOrang;
-
-
-
       grandTotalAbtA += metrics.abt.anggaran;
       grandTotalAbtRA += metrics.abt.realisasiAnggaran;
-
-
-
       grandTotalNonP += metrics.nonAbt.paket;
-
-
-
       grandTotalNonO += metrics.nonAbt.orang;
-
-
-
       grandTotalNonRP += metrics.nonAbt.realisasiPaket;
-
-
-
       grandTotalNonR += metrics.nonAbt.realisasiOrang;
-
-
-
       grandTotalNonA += metrics.nonAbt.anggaran;
       grandTotalNonRA += metrics.nonAbt.realisasiAnggaran;
-
     });
-
   });
-
-
 
   const totalModul = grandTotalAbtA + grandTotalNonA;
   const totalRealisasiModul = grandTotalAbtRA + grandTotalNonRA;
   const persentaseModul = hitungPersen(totalRealisasiModul, totalModul);
-
-
-
   const totalLainnya = lainnyaData.reduce((sum, item) => sum + Number(item.anggaran || 0), 0);
-
-
-
   const totalRealisasiLainnya = lainnyaData.reduce((sum, item) => sum + getRealisasiLainnya(item), 0);
-
-
-
   const persentaseLainnya = hitungPersen(totalRealisasiLainnya, totalLainnya);
-
-
-
   const superGrandTotal = totalModul + totalLainnya;
   const superGrandRealisasi = totalRealisasiModul + totalRealisasiLainnya;
   const superGrandPersentase = hitungPersen(superGrandRealisasi, superGrandTotal);
-  // ============================================================
-  // EXPORT EXCEL
-  // ============================================================
-
-
 
   const handleDownloadExcel = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -459,7 +200,6 @@ export default function RekapanTable({ data }: RekapanTableProps) {
       { width: 16 },
       { width: 45 },
 
-      // ABT: Target 2 + Realisasi 2 + Capaian 2 + Anggaran 3
       { width: 12 },
       { width: 12 },
       { width: 14 },
@@ -1302,56 +1042,17 @@ export default function RekapanTable({ data }: RekapanTableProps) {
       </div>
     );
   };
-  // RENDER
-  // ============================================================
-
-
 
   return (
 
     <div className="space-y-6">
-
-      {/* ======================================================*
-
-*&#xA0;         BUTTON EXCEL*
-
-*&#xA0;     ====================================================== */}
-
-
-
       <div className="flex justify-end">
-
         <button onClick={handleDownloadExcel} className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-5 py-2.5 rounded-xl font-bold border border-emerald-200 transition-all hover:bg-emerald-100 shadow-sm hover:shadow">
-
           <Download className="w-5 h-5" />
-
           Cetak Excel Rekapan
-
         </button>
-
       </div>
-
-
-
-      {/* ======================================================*
-
-*&#xA0;         SEMUA GROUP*
-
-*&#xA0;     ====================================================== */}
-
-
-
       {data.map((group) => renderStandardGroup(group))}
-
-
-
-      {/* ======================================================*
-
-*&#xA0;         TOTAL KESELURUHAN MODUL*
-
-*&#xA0;     ====================================================== */}
-
-
 
       {data.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border-2 border-[#1a4e82] overflow-hidden mb-8">
@@ -1442,189 +1143,71 @@ export default function RekapanTable({ data }: RekapanTableProps) {
           </div>
         </div>
       )}
-      {/* ======================================================*
-
-*&#xA0;         ANGGARAN LAINNYA*
-
-*&#xA0;     ====================================================== */}
-
-
-
+     
       {lainnyaData.length > 0 && (
-
         <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 overflow-hidden mb-8">
-
           <div className="bg-emerald-700 px-6 py-4">
-
             <h2 className="text-lg font-bold text-white uppercase tracking-wide">Anggaran Lainnya</h2>
-
           </div>
-
-
-
           <div className="overflow-x-auto">
-
             <table className="w-full text-sm text-left border-collapse">
-
               <thead className="bg-emerald-800 text-emerald-50">
-
                 <tr>
-
                   <th className="border-y border-emerald-900 px-4 py-3 text-center w-16">NO.</th>
-
-
-
                   <th className="border-y border-emerald-900 px-4 py-3 text-center w-32">-</th>
-
-
-
                   <th className="border-y border-emerald-900 px-4 py-3 w-[300px]">Keterangan</th>
-
-
-
                   <th className="border-y border-emerald-900 px-4 py-3 text-right w-40">Anggaran (Rp.)</th>
-
-
-
                   <th className="border-y border-emerald-900 px-4 py-3 text-right w-40">Realisasi (Rp.)</th>
-
-
-
                   <th className="border-y border-emerald-900 px-4 py-3 text-center w-32">Persentase (%)</th>
-
                 </tr>
-
               </thead>
 
-
-
               <tbody className="text-gray-700">
-
                 {lainnyaData.map((item, idx) => {
-
                   const anggaran = Number(item.anggaran || 0);
-
-
-
                   const realisasi = getRealisasiLainnya(item);
-
-
-
                   const persentase = hitungPersen(realisasi, anggaran);
 
-
-
                   return (
-
                     <tr key={item.id} className="border-b border-emerald-50 hover:bg-emerald-50/50 transition-colors">
-
                       <td className="border-r border-emerald-50 px-4 py-3 text-center font-semibold">{idx + 1}</td>
-
-
-
                       <td className="border-r border-emerald-50 px-4 py-3 text-center text-gray-400">-</td>
-
-
-
                       <td className="border-r border-emerald-50 px-4 py-3 font-medium text-emerald-900">{item.nama_modul}</td>
-
-
-
                       <td className="border-r border-emerald-50 px-4 py-3 text-right font-bold text-emerald-700 bg-emerald-50/30">{formatRp(anggaran)}</td>
-
-
-
                       <td className="border-r border-emerald-50 px-4 py-3 text-right font-bold text-blue-700 bg-emerald-50/30">{formatRp(realisasi)}</td>
-
-
-
                       <td className="px-4 py-3 text-center font-bold text-emerald-700 bg-emerald-50/30">{persentase}%</td>
-
                     </tr>
-
                   );
-
                 })}
-
               </tbody>
 
-
-
               <tfoot className="bg-emerald-100 font-bold uppercase text-emerald-900 border-t-2 border-white">
-
                 <tr>
-
                   <td colSpan={3} className="px-4 py-4 text-right">
-
                     TOTAL ANGGARAN LAINNYA
-
                   </td>
-
-
-
                   <td className="px-4 py-4 text-right text-emerald-800">{formatRp(totalLainnya)}</td>
-
-
-
                   <td className="px-4 py-4 text-right text-blue-800">{formatRp(totalRealisasiLainnya)}</td>
-
-
-
                   <td className="px-4 py-4 text-center text-emerald-800">{persentaseLainnya}%</td>
-
                 </tr>
-
               </tfoot>
-
             </table>
-
           </div>
-
         </div>
-
       )}
 
-
-
-      {/* ======================================================*
-
-*&#xA0;         GRAND TOTAL*
-
-*&#xA0;     ====================================================== */}
-
-
-
       <div className="mt-8 bg-gradient-to-br from-[#15406A] to-[#1e5891] rounded-2xl shadow-xl border border-blue-800 overflow-hidden relative">
-
         <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-
           <svg width="120" height="120" viewBox="0 0 24 24" fill="currentColor" xmlns="http\://www.w3.org/2000/svg">
-
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.64-2.25 1.64-1.74 0-2.1-.96-2.17-1.92H8.01c.08 1.84 1.25 2.92 2.89 3.28V19h2.38v-1.63c1.5-.28 2.86-1.12 2.86-2.8 0-2.31-1.34-2.57-3.03-2.57z" />
-
           </svg>
-
         </div>
-
-
-
         <div className="p-8 sm:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-
           <div>
-
             <h3 className="text-blue-200 font-bold tracking-widest text-sm mb-2 uppercase">Rekapitulasi Akhir</h3>
-
-
-
             <h2 className="text-2xl sm:text-3xl font-black text-white">GRAND TOTAL KESELURUHAN</h2>
-
-
-
             <p className="text-blue-100/70 text-sm mt-2 max-w-md">Kalkulasi akhir dari seluruh Modul Anggaran (ABT & NON-ABT) ditambah dengan Anggaran Lainnya.</p>
-
           </div>
-
-
 
           <div className="bg-black/20 backdrop-blur-sm border border-white/10 p-6 rounded-2xl min-w-[300px]">
             <div className="grid grid-cols-1 gap-5 text-right">
@@ -1642,13 +1225,9 @@ export default function RekapanTable({ data }: RekapanTableProps) {
               </div>
             </div>
           </div>
-
         </div>
-
       </div>
-
     </div>
-
   );
 
 }
