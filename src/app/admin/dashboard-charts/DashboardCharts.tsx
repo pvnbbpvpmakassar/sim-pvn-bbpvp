@@ -21,6 +21,8 @@ import UPTPBarChart from "./UPTPBarChart";
 import ProduktivitasBarChart from "./ProduktivitasBarChart";
 import ROPerformanceTable from "./ROPerformanceTable";
 import TargetGapBarChart from "./TargetGapBarChart";
+import CategoryChartPanel from "./CategoryChartPanel";
+import BudgetAnalytics from "./BudgetAnalytics";
 
 type DashboardChartsProps = {
 data: DashboardGroupData[];
@@ -199,20 +201,24 @@ return ( <div className="space-y-6"> <DashboardSummaryCards
   ) : (
     <>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <CapaianModulBarChart data={visibleGroups} />
-        <RealisasiDonutChart data={visibleGroups} />
+        <CategoryChartPanel data={visibleGroups} title="Kategori data — Capaian Modul" description="Pilih gabungan, ABT, atau NON-ABT untuk membandingkan target dan realisasi.">
+          <CapaianModulBarChart data={visibleGroups} />
+        </CategoryChartPanel>
+        <CategoryChartPanel data={visibleGroups} title="Kategori data — Proporsi Realisasi" description="Lihat komposisi realisasi peserta berdasarkan kategori anggaran.">
+          <RealisasiDonutChart data={visibleGroups} />
+        </CategoryChartPanel>
       </div>
 
       {showSertifikasi && (
-        <section className="space-y-4">
+        <CategoryChartPanel data={visibleGroups} title="Kategori data — Sertifikasi Kompetensi" description="Switch kategori memengaruhi seluruh angka pada chart sertifikasi ini.">
           <SertifikasiBarChart data={visibleGroups} />
-        </section>
+        </CategoryChartPanel>
       )}
 
       {showUPTP && (
-        <section className="space-y-4">
+        <CategoryChartPanel data={visibleGroups} title="Kategori data — UPTP" description="Analisis target dan realisasi UPTP berdasarkan ABT, NON-ABT, atau gabungan.">
           <UPTPBarChart data={visibleGroups} />
-        </section>
+        </CategoryChartPanel>
       )}
 
       {showProduktivitas && (
@@ -231,12 +237,13 @@ return ( <div className="space-y-6"> <DashboardSummaryCards
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 2xl:grid-cols-3">
                 {produktivitasRO.map((ro) => (
-                  <ProduktivitasBarChart
-                    key={ro.kode}
-                    data={visibleGroups}
-                    kodeRO={ro.kode}
-                    title={ro.nama}
-                  />
+                  <CategoryChartPanel key={ro.kode} data={visibleGroups} title={`Kategori data — ${ro.nama}`} description="Pilih kategori yang ingin dianalisis untuk RO ini.">
+                    <ProduktivitasBarChart
+                      data={visibleGroups}
+                      kodeRO={ro.kode}
+                      title={ro.nama}
+                    />
+                  </CategoryChartPanel>
                 ))}
               </div>
             </>
@@ -254,9 +261,13 @@ return ( <div className="space-y-6"> <DashboardSummaryCards
 
           <ROPerformanceTable data={visibleGroups} />
 
-          <TargetGapBarChart data={visibleGroups} />
+          <CategoryChartPanel data={visibleGroups} title="Kategori data — Kesenjangan Target" description="Bandingkan kekurangan atau surplus realisasi terhadap target pada kategori terpilih.">
+            <TargetGapBarChart data={visibleGroups} />
+          </CategoryChartPanel>
         </section>
       )}
+
+      <BudgetAnalytics data={visibleGroups} />
     </>
   )}
 </div>

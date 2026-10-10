@@ -73,11 +73,27 @@ export const sumMetrics = (
 /**
  * Menggabungkan metrik ABT dan NON-ABT.
  */
+
 export const combineRowMetrics = (
   row: DashboardRow,
 ): DashboardMetrics => {
-  return sumMetrics([row.abt, row.nonAbt]);
+  // Samakan aturan akumulasi dengan RekapanTable.
+  // Jika memiliki subbaris, gunakan total subbaris,
+  // bukan nilai induk agar tidak terjadi selisih.
+
+  const abtMetrics =
+    row.subRows.length > 0
+      ? sumMetrics(row.subRows.map((sub) => sub.abt))
+      : row.abt;
+
+  const nonAbtMetrics =
+    row.subRows.length > 0
+      ? sumMetrics(row.subRows.map((sub) => sub.nonAbt))
+      : row.nonAbt;
+
+  return sumMetrics([abtMetrics, nonAbtMetrics]);
 };
+
 
 /**
  * Menghitung ringkasan dari baris induk.
