@@ -272,7 +272,7 @@ const simpanData = async () => {
       id: row.id,
 
       // Data default dikirim otomatis tanpa input dari pengguna
-      kode: "999",
+      kode: "    ",
       ro: "Non Batch",
 
       // Kolom yang tidak digunakan pada form ini
