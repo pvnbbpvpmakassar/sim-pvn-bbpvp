@@ -23,7 +23,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </button>
           <div className="flex items-center gap-2">
             <Hexagon className="w-5 h-5 text-blue-300" fill="currentColor" />
-            <span className="font-extrabold text-sm tracking-wide">ADMIN PANEL</span>
+            <span className="font-extrabold text-sm tracking-wide">Dashboard PVN</span>
           </div>
           <div className="w-9" /> {/* Spacer kosong agar teks berada di tengah */}
         </header>

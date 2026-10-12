@@ -203,7 +203,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </motion.div>
 
               <div className="min-w-0">
-                <h1 className="truncate text-[17px] font-extrabold tracking-tight text-white">SIM-PVN</h1>
+                <h1 className="truncate text-[17px] font-extrabold tracking-tight text-white">Dashboard PVN</h1>
 
                 <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-200/70">BBPVP Makassar</p>
               </div>

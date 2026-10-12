@@ -24,6 +24,7 @@ type UPTPChartItem = {
 };
 
 const COLORS: Record<UPTPCategory, string> = {
+  UPTP: "#15406A",
   Satpel: "#0F766E",
   UPTD: "#7C3AED",
   PFLK: "#D97706",
@@ -31,6 +32,7 @@ const COLORS: Record<UPTPCategory, string> = {
 };
 
 const CATEGORY_META: Record<UPTPCategory, { label: string; icon: React.ElementType }> = {
+  UPTP: { label: "UPTP", icon: BriefcaseBusiness },
   Satpel: { label: "Satuan Pelayanan", icon: MapPin },
   UPTD: { label: "UPTD", icon: Building2 },
   PFLK: { label: "Produktivitas / PFLK", icon: GraduationCap },
@@ -49,19 +51,17 @@ function normalizeText(value: string | null | undefined): string {
  * Nama kategori dipakai sebagai fallback jika data berasal dari
  * modul yang belum memiliki kode atau nama RO.
  */
-function getUPTPCategory(row: DashboardRow): UPTPCategory | null {
-  const moduleText = normalizeText(row.id);
-  const kode = normalizeText(row.kode);
-  const name = normalizeText(row.ro);
-
-  const text = `${moduleText} ${kode} ${name}`;
+function getUPTPCategory(row: DashboardRow): UPTPCategory {
+  const text = [row.id, row.kode, row.ro].map(normalizeText).join(" ");
 
   if (text.includes("nonbatch")) return "Non-Batch";
   if (text.includes("pflk")) return "PFLK";
   if (text.includes("uptd")) return "UPTD";
   if (text.includes("satpel")) return "Satpel";
 
-  return null;
+  // RO UPTP menjadi kategori default jika tidak cocok
+  // dengan kategori modul lainnya.
+  return "UPTP";
 }
 
 function getUPTPGroup(data: DashboardGroupData[]) {
@@ -142,28 +142,14 @@ export default function UPTPBarChart({ data, search = "", isLoading = false }: U
     const result: UPTPChartItem[] = [];
 
     for (const row of group.rows) {
-      /*
-       * Data utama UPTP dapat memiliki subRows yang merupakan rincian
-       * dari baris induknya. Karena itu, subRows tidak ditambahkan lagi.
-       *
-       * UPTD, PFLK, dan Non-Batch pada struktur dashboard Anda
-       * disimpan sebagai baris mandiri dengan subRows kosong.
-       */
       const category = getUPTPCategory(row);
-
-      const isStandaloneCategory = category === "UPTD" || category === "PFLK" || category === "Non-Batch";
-
-      if (!category && !isStandaloneCategory) {
-        continue;
-      }
-
       const metrics = combineRowMetrics(row);
 
       const item: UPTPChartItem = {
         id: row.id,
         kode: row.kode,
-        name: row.ro || category || "Rincian Output",
-        kategori: category ?? "Satpel",
+        name: row.ro || "Rincian Output",
+        kategori: category,
         targetOrang: metrics.orang,
         realisasiOrang: metrics.realisasiOrang,
       };
@@ -194,6 +180,7 @@ export default function UPTPBarChart({ data, search = "", isLoading = false }: U
 
   const categoryCounts = useMemo(() => {
     const counts: Record<UPTPCategory, number> = {
+      UPTP: 0,
       Satpel: 0,
       UPTD: 0,
       PFLK: 0,

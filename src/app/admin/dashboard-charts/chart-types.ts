@@ -38,10 +38,13 @@ export type ModuleSummary = {
 };
 
 export type UPTPCategory =
+  | "UPTP"
   | "Satpel"
   | "UPTD"
   | "PFLK"
   | "Non-Batch";
+
+  
 
 export type UPTPChartDataItem = ChartDataItem & {
   kategori: UPTPCategory;

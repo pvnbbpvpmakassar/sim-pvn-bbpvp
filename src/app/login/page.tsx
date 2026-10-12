@@ -3,12 +3,14 @@
 import Image from "next/image";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
+import { Mail, Lock, ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { login } from "../actions/auth";
 
 import LogoBBPVP from "@/assets/logo-bbpvp-makassar.png";
 import LogoKemnaker from "@/assets/logo-kemnaker.png";
+
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -499,7 +501,7 @@ export default function LoginPage() {
                       </div>
                     ) : (
                       <span className="relative flex items-center gap-2">
-                        Masuk ke Dashboard
+                        Masuk sebagai Admin
                         <ArrowRight className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                       </span>
                     )}
@@ -509,7 +511,12 @@ export default function LoginPage() {
                 {/* =================================================
                     FOOTER
                 ================================================== */}
-
+                <Link href="/">
+                  <span className="flex items-center gap-2 mt-3 hover:text-slate-300">
+                    <ArrowLeft className="h-4 w-4" />
+                    Kembali ke Dashboard
+                  </span>
+                </Link>
                 <div className="mt-8 border-t border-white/10 pt-5 text-center">
                   <p className="text-[11px] leading-5 text-white/35">Akses terbatas untuk administrator yang memiliki kewenangan.</p>
 
