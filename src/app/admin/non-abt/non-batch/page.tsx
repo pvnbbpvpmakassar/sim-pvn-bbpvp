@@ -260,64 +260,76 @@ export default function NonBatchPage() {
   // SIMPAN
   // ==========================================================
 
-  const simpanData = async () => {
-    try {
-      setIsSaving(true);
+// ============================================================
+// SIMPAN DATA NON BATCH
+// ============================================================
 
-      const rowsToSave = rows.map((row) => ({
-        id: row.id,
-        kode: "",
-        ro: "",
-        paket: 0,
-        orang: 0,
-        realisasiPaket: Number(row.realisasiPaket || 0),
-        realisasiOrang: Number(row.realisasiOrang || 0),
-        isReadOnly: false,
-        subRows: [],
-      }));
+const simpanData = async () => {
+  try {
+    setIsSaving(true);
 
-      const result = await simpanBulkRincianOutput(
-        "NON-ABT",
-        "non-batch",
-        rowsToSave,
-      );
+    const rowsToSave = rows.map((row) => ({
+      id: row.id,
 
-      if (result.success) {
-        setModal({
-          isOpen: true,
-          type: "success",
-          title: "Berhasil",
-          message: "Data Non Batch berhasil disimpan ke Database!",
-        });
-      } else {
-        const errorMessage =
-          "error" in result && result.error
-            ? result.error
-            : "Terjadi kesalahan saat menyimpan data.";
+      // Data default dikirim otomatis tanpa input dari pengguna
+      kode: "999",
+      ro: "Non Batch",
 
-        setModal({
-          isOpen: true,
-          type: "error",
-          title: "Gagal",
-          message: errorMessage,
-        });
-      }
-    } catch (error: unknown) {
+      // Kolom yang tidak digunakan pada form ini
+      paket: 0,
+      orang: 0,
+
+      // Data yang diinput pengguna
+      realisasiPaket: Number(row.realisasiPaket || 0),
+      realisasiOrang: Number(row.realisasiOrang || 0),
+
+      isReadOnly: false,
+      subRows: [],
+    }));
+
+    const result = await simpanBulkRincianOutput(
+      "NON-ABT",
+      "non-batch",
+      rowsToSave,
+    );
+
+    if (result.success) {
+      setModal({
+        isOpen: true,
+        type: "success",
+        title: "Berhasil",
+        message: "Data realisasi Non Batch berhasil disimpan ke database.",
+      });
+    } else {
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Terjadi kesalahan tidak diketahui.";
+        "error" in result && result.error
+          ? result.error
+          : "Terjadi kesalahan saat menyimpan data.";
 
       setModal({
         isOpen: true,
         type: "error",
-        title: "Gagal",
-        message: `Terjadi kesalahan saat menyimpan ke database: ${errorMessage}`,
+        title: "Gagal Menyimpan",
+        message: errorMessage,
       });
-    } finally {
-      setIsSaving(false);
     }
-  };
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Terjadi kesalahan tidak diketahui.";
+
+    setModal({
+      isOpen: true,
+      type: "error",
+      title: "Gagal Menyimpan",
+      message: `Terjadi kesalahan saat menyimpan ke database: ${errorMessage}`,
+    });
+  } finally {
+    setIsSaving(false);
+  }
+};
+
 
   // ==========================================================
   // EXPORT EXCEL
