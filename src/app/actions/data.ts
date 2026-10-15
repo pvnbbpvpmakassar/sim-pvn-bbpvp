@@ -149,208 +149,123 @@ export async function simpanBulkRincianOutput(kategori: string, modul: string, r
   try {
     const orangOnly = isOrangOnlyModule(modul);
 
-    // ========================================================
-    // 1. HAPUS DATA MANUAL LAMA
-    // ========================================================
-
-    await sql`
-      DELETE FROM rincian_output
+    // Catat baris manual lama. Data lama baru dibersihkan setelah seluruh
+    // baris baru berhasil di-update/insert, sehingga kegagalan tidak langsung
+    // menghapus semua data modul.
+    const oldManualRows = await sql`
+      SELECT id
+      FROM rincian_output
       WHERE kategori = ${kategori}
         AND modul = ${modul}
         AND is_read_only = FALSE
     `;
+    const keepIds = new Set<string>();
 
-    // ========================================================
-    // 2. INSERT DATA
-    // ========================================================
+    const saveManualRow = async (item: RowData | SubRowData, parentId: string | null) => {
+      keepIds.add(String(item.id));
+      const paket = orangOnly ? 0 : toDsa(item.paket);
+      const realisasiPaket = orangOnly ? 0 : toDsa(item.realisasiPaket);
+      const orang = toDsa(item.orang);
+      const realisasiOrang = toDsa(item.realisasiOrang);
+
+      // Anggaran sengaja tidak dimasukkan ke SET agar tetap seperti semula.
+      const updated = await sql`
+        UPDATE rincian_output
+        SET kategori = ${kategori},
+            modul = ${modul},
+            parent_id = ${parentId},
+            kode = ${item.kode},
+            nama_ro = ${item.ro},
+            paket = ${paket},
+            target_orang = ${orang},
+            realisasi_orang = ${realisasiOrang},
+            realisasi_paket = ${realisasiPaket},
+            is_read_only = FALSE
+        WHERE id = ${item.id}
+        RETURNING id
+      `;
+
+      if (updated.length === 0) {
+        await sql`
+          INSERT INTO rincian_output (
+            id, kategori, modul, parent_id, kode, nama_ro, paket,
+            target_orang, realisasi_orang, realisasi_paket,
+            anggaran, realisasi_anggaran, is_read_only
+          )
+          VALUES (
+            ${item.id}, ${kategori}, ${modul}, ${parentId}, ${item.kode},
+            ${item.ro}, ${paket}, ${orang}, ${realisasiOrang},
+            ${realisasiPaket}, 0, 0, FALSE
+          )
+        `;
+      }
+    };
 
     for (const row of rows) {
-      const paket = orangOnly ? 0 : toDsa(row.paket);
-
-      const realisasiPaket = orangOnly ? 0 : toDsa(row.realisasiPaket);
-
-      const orang = toDsa(row.orang);
-      const realisasiOrang = toDsa(row.realisasiOrang);
-
-      // ======================================================
-      // PARENT READ ONLY
-      // ======================================================
+      const manualSubRows = (row.subRows ?? []).filter((sub) => !sub.isReadOnly);
 
       if (row.isReadOnly) {
-        const manualSubRows = row.subRows ? row.subRows.filter((sub) => !sub.isReadOnly) : [];
-
+        // Parent read-only tidak diubah jika sudah ada di database.
+        // Hanya buat parent jika belum ada tetapi punya Sub-RO manual.
         if (manualSubRows.length > 0) {
           const existingParent = await sql`
             SELECT id
             FROM rincian_output
             WHERE id = ${row.id}
+              AND kategori = ${kategori}
+              AND modul = ${modul}
           `;
 
           if (existingParent.length === 0) {
             await sql`
               INSERT INTO rincian_output (
-                id,
-                kategori,
-                modul,
-                kode,
-                nama_ro,
-                paket,
-                target_orang,
-                realisasi_orang,
-                realisasi_paket,
-                is_read_only
+                id, kategori, modul, parent_id, kode, nama_ro, paket,
+                target_orang, realisasi_orang, realisasi_paket,
+                anggaran, realisasi_anggaran, is_read_only
               )
               VALUES (
-                ${row.id},
-                ${kategori},
-                ${modul},
-                ${row.kode},
-                ${row.ro},
-                ${paket},
-                ${orang},
-                ${realisasiOrang},
-                ${realisasiPaket},
-                TRUE
-              )
-            `;
-          }
-
-          // ==================================================
-          // SUB-ROW DARI PARENT READ ONLY
-          // ==================================================
-
-          for (const sub of manualSubRows) {
-            const subPaket = orangOnly ? 0 : toDsa(sub.paket);
-
-            const subRealisasiPaket = orangOnly ? 0 : toDsa(sub.realisasiPaket);
-
-            await sql`
-              INSERT INTO rincian_output (
-                id,
-                kategori,
-                modul,
-                parent_id,
-                kode,
-                nama_ro,
-                paket,
-                target_orang,
-                realisasi_orang,
-                realisasi_paket,
-                is_read_only
-              )
-              VALUES (
-                ${sub.id},
-                ${kategori},
-                ${modul},
-                ${row.id},
-                ${sub.kode},
-                ${sub.ro},
-                ${subPaket},
-                ${toDsa(sub.orang)},
-                ${toDsa(sub.realisasiOrang)},
-                ${subRealisasiPaket},
-                FALSE
+                ${row.id}, ${kategori}, ${modul}, NULL, ${row.kode}, ${row.ro},
+                ${orangOnly ? 0 : toDsa(row.paket)}, ${toDsa(row.orang)},
+                ${toDsa(row.realisasiOrang)},
+                ${orangOnly ? 0 : toDsa(row.realisasiPaket)}, 0, 0, TRUE
               )
             `;
           }
         }
 
+        for (const sub of manualSubRows) {
+          await saveManualRow(sub, row.id);
+        }
         continue;
       }
 
-      // ======================================================
-      // PARENT MANUAL
-      // ======================================================
+      await saveManualRow(row, null);
 
-      await sql`
-        INSERT INTO rincian_output (
-          id,
-          kategori,
-          modul,
-          kode,
-          nama_ro,
-          paket,
-          target_orang,
-          realisasi_orang,
-          realisasi_paket,
-          is_read_only
-        )
-        VALUES (
-          ${row.id},
-          ${kategori},
-          ${modul},
-          ${row.kode},
-          ${row.ro},
-          ${paket},
-          ${orang},
-          ${realisasiOrang},
-          ${realisasiPaket},
-          FALSE
-        )
-      `;
-
-      // ======================================================
-      // SUB-ROW MANUAL
-      // ======================================================
-
-      if (row.subRows && row.subRows.length > 0) {
-        for (const sub of row.subRows) {
-          if (sub.isReadOnly) {
-            continue;
-          }
-
-          const subPaket = orangOnly ? 0 : toDsa(sub.paket);
-
-          const subRealisasiPaket = orangOnly ? 0 : toDsa(sub.realisasiPaket);
-
-          await sql`
-            INSERT INTO rincian_output (
-              id,
-              kategori,
-              modul,
-              parent_id,
-              kode,
-              nama_ro,
-              paket,
-              target_orang,
-              realisasi_orang,
-              realisasi_paket,
-              is_read_only
-            )
-            VALUES (
-              ${sub.id},
-              ${kategori},
-              ${modul},
-              ${row.id},
-              ${sub.kode},
-              ${sub.ro},
-              ${subPaket},
-              ${toDsa(sub.orang)},
-              ${toDsa(sub.realisasiOrang)},
-              ${subRealisasiPaket},
-              FALSE
-            )
-          `;
-        }
+      for (const sub of manualSubRows) {
+        await saveManualRow(sub, row.id);
       }
     }
 
-    return {
-      success: true,
-    };
+    // Hapus hanya baris manual yang benar-benar dikeluarkan dari payload.
+    for (const oldRow of oldManualRows) {
+      if (!keepIds.has(String(oldRow.id))) {
+        await sql`
+          DELETE FROM rincian_output
+          WHERE id = ${oldRow.id}
+            AND kategori = ${kategori}
+            AND modul = ${modul}
+            AND is_read_only = FALSE
+        `;
+      }
+    }
+
+    return { success: true };
   } catch (error: unknown) {
     console.error("Gagal melakukan operasi database:", error);
 
-    if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
     return {
       success: false,
-      error: "Terjadi kesalahan yang tidak diketahui pada server.",
+      error: error instanceof Error ? error.message : "Terjadi kesalahan yang tidak diketahui pada server.",
     };
   }
 }
@@ -549,104 +464,108 @@ export async function getSatpelData(kategori: string) {
 
 export async function simpanSatpelData(kategori: string, locations: LokasiSatpel[], rows: SatpelRowData[]) {
   try {
-    await sql`
-      DELETE FROM lokasi_satpel
-      WHERE kategori = ${kategori}
-    `;
-
-    await sql`
-      DELETE FROM rincian_output
+    // Update/insert terlebih dahulu. Anggaran tidak disentuh pada UPDATE,
+    // sehingga edit data Satpel tidak dapat mereset anggaran yang sudah ada.
+    const oldRows = await sql`
+      SELECT id
+      FROM rincian_output
       WHERE kategori = ${kategori}
         AND modul = 'satpel'
     `;
+    const oldLocationRows = await sql`
+      SELECT id
+      FROM lokasi_satpel
+      WHERE kategori = ${kategori}
+    `;
 
+    const keepRowIds = new Set<string>();
+    const saveSatpelRow = async (item: SatpelRowData | SatpelSubRowData, parentId: string | null) => {
+      keepRowIds.add(String(item.id));
+      const jsonData = JSON.stringify(item.data || {});
+      const updated = await sql`
+        UPDATE rincian_output
+        SET kategori = ${kategori},
+            modul = 'satpel',
+            parent_id = ${parentId},
+            kode = ${item.kode},
+            nama_ro = ${item.ro},
+            data_satpel = ${jsonData},
+            is_read_only = FALSE
+        WHERE id = ${item.id}
+        RETURNING id
+      `;
+
+      if (updated.length === 0) {
+        await sql`
+          INSERT INTO rincian_output (
+            id, kategori, modul, parent_id, kode, nama_ro, data_satpel,
+            anggaran, realisasi_anggaran, is_read_only
+          )
+          VALUES (
+            ${item.id}, ${kategori}, 'satpel', ${parentId}, ${item.kode},
+            ${item.ro}, ${jsonData}, 0, 0, FALSE
+          )
+        `;
+      }
+    };
+
+    const keepLocationIds = new Set<string>();
     for (let i = 0; i < locations.length; i++) {
-      await sql`
-        INSERT INTO lokasi_satpel (
-          id,
-          kategori,
-          nama_lokasi,
-          urutan
-        )
-        VALUES (
-          ${locations[i].id},
-          ${kategori},
-          ${locations[i].name},
-          ${i}
-        )
-      `;
-    }
-
-    for (const row of rows) {
-      const rowDataJson = JSON.stringify(row.data || {});
-
-      await sql`
-        INSERT INTO rincian_output (
-          id,
-          kategori,
-          modul,
-          kode,
-          nama_ro,
-          data_satpel,
-          is_read_only
-        )
-        VALUES (
-          ${row.id},
-          ${kategori},
-          'satpel',
-          ${row.kode},
-          ${row.ro},
-          ${rowDataJson},
-          FALSE
-        )
+      const location = locations[i];
+      keepLocationIds.add(String(location.id));
+      const updated = await sql`
+        UPDATE lokasi_satpel
+        SET kategori = ${kategori}, nama_lokasi = ${location.name}, urutan = ${i}
+        WHERE id = ${location.id}
+        RETURNING id
       `;
 
-      if (row.subRows && row.subRows.length > 0) {
-        for (const sub of row.subRows) {
-          const subDataJson = JSON.stringify(sub.data || {});
-
-          await sql`
-            INSERT INTO rincian_output (
-              id,
-              kategori,
-              modul,
-              parent_id,
-              kode,
-              nama_ro,
-              data_satpel,
-              is_read_only
-            )
-            VALUES (
-              ${sub.id},
-              ${kategori},
-              'satpel',
-              ${row.id},
-              ${sub.kode},
-              ${sub.ro},
-              ${subDataJson},
-              FALSE
-            )
-          `;
-        }
+      if (updated.length === 0) {
+        await sql`
+          INSERT INTO lokasi_satpel (id, kategori, nama_lokasi, urutan)
+          VALUES (${location.id}, ${kategori}, ${location.name}, ${i})
+        `;
       }
     }
 
-    return {
-      success: true,
-    };
+    for (const row of rows) {
+      await saveSatpelRow(row, null);
+      for (const sub of row.subRows ?? []) {
+        await saveSatpelRow(sub, row.id);
+      }
+    }
+
+    // Bersihkan hanya baris yang memang sudah dihapus dari payload.
+    // Pembersihan dilakukan terakhir agar kegagalan penyimpanan tidak
+    // menghapus semua data lama terlebih dahulu.
+    for (const oldRow of oldRows) {
+      if (!keepRowIds.has(String(oldRow.id))) {
+        await sql`
+          DELETE FROM rincian_output
+          WHERE id = ${oldRow.id}
+            AND kategori = ${kategori}
+            AND modul = 'satpel'
+        `;
+      }
+    }
+
+    for (const oldLocation of oldLocationRows) {
+      if (!keepLocationIds.has(String(oldLocation.id))) {
+        await sql`
+          DELETE FROM lokasi_satpel
+          WHERE id = ${oldLocation.id}
+            AND kategori = ${kategori}
+        `;
+      }
+    }
+
+    return { success: true };
   } catch (error: unknown) {
     console.error("Gagal menyimpan data Satpel:", error);
 
-    if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
     return {
       success: false,
-      error: "Terjadi kesalahan saat menyimpan Satpel.",
+      error: error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan Satpel.",
     };
   }
 }
@@ -705,55 +624,47 @@ export async function getAlokasiAnggaran() {
 
 export async function simpanBulkAlokasiAnggaran(abtRows: AlokasiRowData[], nonAbtRows: AlokasiRowData[], lainnyaRows: AlokasiRowData[] = []) {
   try {
-    await sql`
-      DELETE FROM alokasi_anggaran
-    `;
+    // Jangan kosongkan tabel sebelum seluruh payload berhasil diproses.
+    const oldRows = await sql`SELECT id FROM alokasi_anggaran`;
+    const allRows: { row: AlokasiRowData; kategori: string }[] = [...abtRows.map((row) => ({ row, kategori: "ABT" })), ...nonAbtRows.map((row) => ({ row, kategori: "NON-ABT" })), ...lainnyaRows.map((row) => ({ row, kategori: "LAINNYA" }))];
+    const keepIds = new Set<string>();
 
-    const insertRow = async (row: AlokasiRowData, kategori: string) => {
-      await sql`
-        INSERT INTO alokasi_anggaran (
-          id,
-          kategori,
-          nama_modul,
-          anggaran,
-          realisasi
-        )
-        VALUES (
-          ${row.id},
-          ${kategori},
-          ${row.nama_modul},
-          ${row.anggaran},
-          ${row.realisasi}
-        )
+    for (const { row, kategori } of allRows) {
+      keepIds.add(String(row.id));
+      const updated = await sql`
+        UPDATE alokasi_anggaran
+        SET kategori = ${kategori},
+            nama_modul = ${row.nama_modul},
+            anggaran = ${toDsa(row.anggaran)},
+            realisasi = ${toDsa(row.realisasi)}
+        WHERE id = ${row.id}
+        RETURNING id
       `;
-    };
 
-    for (const row of abtRows) {
-      await insertRow(row, "ABT");
+      if (updated.length === 0) {
+        await sql`
+          INSERT INTO alokasi_anggaran (id, kategori, nama_modul, anggaran, realisasi)
+          VALUES (
+            ${row.id}, ${kategori}, ${row.nama_modul},
+            ${toDsa(row.anggaran)}, ${toDsa(row.realisasi)}
+          )
+        `;
+      }
     }
 
-    for (const row of nonAbtRows) {
-      await insertRow(row, "NON-ABT");
+    // Hapus baris yang memang tidak lagi ada pada payload, setelah penyimpanan.
+    for (const oldRow of oldRows) {
+      if (!keepIds.has(String(oldRow.id))) {
+        await sql`DELETE FROM alokasi_anggaran WHERE id = ${oldRow.id}`;
+      }
     }
 
-    for (const row of lainnyaRows) {
-      await insertRow(row, "LAINNYA");
-    }
-
-    return {
-      success: true,
-    };
+    return { success: true };
   } catch (error: unknown) {
-    if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
+    console.error("Gagal menyimpan Alokasi Anggaran:", error);
     return {
       success: false,
-      error: "Terjadi kesalahan saat menyimpan Alokasi Anggaran.",
+      error: error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan Alokasi Anggaran.",
     };
   }
 }
@@ -1208,7 +1119,7 @@ export async function simpanBulkRincianAnggaran(
             ${item.id},
             ${item.fallbackInsert.kategori},
             ${item.fallbackInsert.modul},
-            ${item.parent_id},
+            ${item.fallbackInsert.parent_id},
             ${item.kode},
             ${item.ro},
             ${item.anggaran},
@@ -1315,8 +1226,6 @@ type RawRow = {
 // HELPERS
 // ============================================================
 
-
-
 const normalizeModul = (modul: string | null | undefined): string => {
   return String(modul || "")
     .trim()
@@ -1326,24 +1235,15 @@ const normalizeModul = (modul: string | null | undefined): string => {
 };
 
 const isValidRow = (row: RawRow): boolean => {
-  return (
-    row.kode?.trim() !== "-" &&
-    row.kode?.trim() !== "" &&
-    row.nama_ro?.trim() !== ""
-  );
+  return row.kode?.trim() !== "-" && row.kode?.trim() !== "" && row.nama_ro?.trim() !== "";
 };
 
 const isValidNonBatchRow = (row: RawRow) => {
   return normalizeModul(row.modul) === "non-batch";
 };
 
-const makeKey = (
-  kode: string | null | undefined,
-  ro: string | null | undefined,
-): string => {
-  return `${(kode || "-").trim()}:::${(ro || "")
-    .trim()
-    .toLowerCase()}`;
+const makeKey = (kode: string | null | undefined, ro: string | null | undefined): string => {
+  return `${(kode || "-").trim()}:::${(ro || "").trim().toLowerCase()}`;
 };
 
 // ============================================================
@@ -1352,7 +1252,6 @@ const makeKey = (
 
 export async function getDashboardRekapan() {
   try {
-
     const allData = (await sql`
       SELECT *
       FROM rincian_output
@@ -1360,11 +1259,7 @@ export async function getDashboardRekapan() {
     `) as RawRow[];
 
     const normalized: RawRow[] = allData.map((row) => {
-
-      if (
-        normalizeModul(row.modul) === "satpel" &&
-        row.data_satpel
-      ) {
+      if (normalizeModul(row.modul) === "satpel" && row.data_satpel) {
         let paket = 0;
         let orang = 0;
         let realisasiPaket = 0;
@@ -1375,13 +1270,9 @@ export async function getDashboardRekapan() {
 
           orang += toDsa(value.orang);
 
-          realisasiPaket += toDsa(
-            value.realisasi_paket,
-          );
+          realisasiPaket += toDsa(value.realisasi_paket);
 
-          realisasiOrang += toDsa(
-            value.realisasi_orang ?? value.realisasi,
-          );
+          realisasiOrang += toDsa(value.realisasi_orang ?? value.realisasi);
         });
 
         return {
@@ -1416,60 +1307,38 @@ export async function getDashboardRekapan() {
       };
     });
 
+    const abtData = normalized.filter((row) => row.kategori === "ABT");
 
-    const abtData = normalized.filter(
-      (row) => row.kategori === "ABT",
-    );
+    const nonAbtData = normalized.filter((row) => row.kategori === "NON-ABT");
 
-    const nonAbtData = normalized.filter(
-      (row) => row.kategori === "NON-ABT",
-    );
-
-    const getMetrics = (
-      row?: RawRow,
-    ): DashboardMetrics => {
+    const getMetrics = (row?: RawRow): DashboardMetrics => {
       return {
         paket: toDsa(row?.paket),
 
         orang: toDsa(row?.target_orang),
 
-        realisasiPaket: toDsa(
-          row?.realisasi_paket,
-        ),
+        realisasiPaket: toDsa(row?.realisasi_paket),
 
-        realisasiOrang: toDsa(
-          row?.realisasi_orang,
-        ),
+        realisasiOrang: toDsa(row?.realisasi_orang),
 
         anggaran: toDsa(row?.anggaran),
         realisasiAnggaran: toDsa(row?.realisasi_anggaran),
       };
     };
 
-    const addMetrics = (
-      a: DashboardMetrics,
-      b: DashboardMetrics,
-    ): DashboardMetrics => {
+    const addMetrics = (a: DashboardMetrics, b: DashboardMetrics): DashboardMetrics => {
       return {
         paket: a.paket + b.paket,
 
         orang: a.orang + b.orang,
 
-        realisasiPaket:
-          a.realisasiPaket +
-          b.realisasiPaket,
+        realisasiPaket: a.realisasiPaket + b.realisasiPaket,
 
-        realisasiOrang:
-          a.realisasiOrang +
-          b.realisasiOrang,
+        realisasiOrang: a.realisasiOrang + b.realisasiOrang,
 
-        anggaran:
-          a.anggaran +
-          b.anggaran,
+        anggaran: a.anggaran + b.anggaran,
 
-        realisasiAnggaran:
-          a.realisasiAnggaran +
-          b.realisasiAnggaran,
+        realisasiAnggaran: a.realisasiAnggaran + b.realisasiAnggaran,
       };
     };
 
@@ -1481,166 +1350,61 @@ export async function getDashboardRekapan() {
       rows: T[],
     ): T[] => {
       return rows.sort((a, b) =>
-        a.kode.localeCompare(
-          b.kode,
-          undefined,
-          {
-            numeric: true,
-            sensitivity: "base",
-          },
-        ),
+        a.kode.localeCompare(b.kode, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
       );
     };
 
-    const buildStandardGroup = (
-      modulNames: string[],
-    ): DashboardRow[] => {
-      const normalizedModuleNames =
-        modulNames.map(normalizeModul);
+    const buildStandardGroup = (modulNames: string[]): DashboardRow[] => {
+      const normalizedModuleNames = modulNames.map(normalizeModul);
 
-      const abtParents = abtData.filter(
-        (row) =>
-          normalizedModuleNames.includes(
-            normalizeModul(row.modul),
-          ) &&
-          row.parent_id === null &&
-          isValidRow(row),
-      );
+      const abtParents = abtData.filter((row) => normalizedModuleNames.includes(normalizeModul(row.modul)) && row.parent_id === null && isValidRow(row));
 
-      const nonAbtParents =
-        nonAbtData.filter(
-          (row) =>
-            normalizedModuleNames.includes(
-              normalizeModul(row.modul),
-            ) &&
-            row.parent_id === null &&
-            isValidRow(row),
-        );
+      const nonAbtParents = nonAbtData.filter((row) => normalizedModuleNames.includes(normalizeModul(row.modul)) && row.parent_id === null && isValidRow(row));
 
-      const parentKeys =
-        new Set<string>();
+      const parentKeys = new Set<string>();
 
       abtParents.forEach((row) => {
-        parentKeys.add(
-          makeKey(
-            row.kode,
-            row.nama_ro,
-          ),
-        );
+        parentKeys.add(makeKey(row.kode, row.nama_ro));
       });
 
       nonAbtParents.forEach((row) => {
-        parentKeys.add(
-          makeKey(
-            row.kode,
-            row.nama_ro,
-          ),
-        );
+        parentKeys.add(makeKey(row.kode, row.nama_ro));
       });
 
       const result: DashboardRow[] = [];
 
       for (const key of parentKeys) {
-        const abtParent =
-          abtParents.find(
-            (row) =>
-              makeKey(
-                row.kode,
-                row.nama_ro,
-              ) === key,
-          );
+        const abtParent = abtParents.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-        const nonAbtParent =
-          nonAbtParents.find(
-            (row) =>
-              makeKey(
-                row.kode,
-                row.nama_ro,
-              ) === key,
-          );
+        const nonAbtParent = nonAbtParents.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-        const abtParentIds =
-          abtParents
-            .filter(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            )
-            .map((row) => row.id);
+        const abtParentIds = abtParents.filter((row) => makeKey(row.kode, row.nama_ro) === key).map((row) => row.id);
 
-        const nonAbtParentIds =
-          nonAbtParents
-            .filter(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            )
-            .map((row) => row.id);
+        const nonAbtParentIds = nonAbtParents.filter((row) => makeKey(row.kode, row.nama_ro) === key).map((row) => row.id);
 
-        const childrenAbt =
-          abtData.filter(
-            (row) =>
-              row.parent_id !== null &&
-              abtParentIds.includes(
-                row.parent_id,
-              ),
-          );
+        const childrenAbt = abtData.filter((row) => row.parent_id !== null && abtParentIds.includes(row.parent_id));
 
-        const childrenNonAbt =
-          nonAbtData.filter(
-            (row) =>
-              row.parent_id !== null &&
-              nonAbtParentIds.includes(
-                row.parent_id,
-              ),
-          );
+        const childrenNonAbt = nonAbtData.filter((row) => row.parent_id !== null && nonAbtParentIds.includes(row.parent_id));
 
-        const childKeys =
-          new Set<string>();
+        const childKeys = new Set<string>();
 
-        [
-          ...childrenAbt,
-          ...childrenNonAbt,
-        ].forEach((row) => {
+        [...childrenAbt, ...childrenNonAbt].forEach((row) => {
           if (isValidRow(row)) {
-            childKeys.add(
-              makeKey(
-                row.kode,
-                row.nama_ro,
-              ),
-            );
+            childKeys.add(makeKey(row.kode, row.nama_ro));
           }
         });
 
-        const subRows: DashboardSubRow[] =
-          [];
+        const subRows: DashboardSubRow[] = [];
 
         for (const childKey of childKeys) {
-          const abtChild =
-            childrenAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === childKey,
-            );
+          const abtChild = childrenAbt.find((row) => makeKey(row.kode, row.nama_ro) === childKey);
 
-          const nonAbtChild =
-            childrenNonAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === childKey,
-            );
+          const nonAbtChild = childrenNonAbt.find((row) => makeKey(row.kode, row.nama_ro) === childKey);
 
-          const base =
-            abtChild ||
-            nonAbtChild;
+          const base = abtChild || nonAbtChild;
 
           if (!base) {
             continue;
@@ -1653,21 +1417,15 @@ export async function getDashboardRekapan() {
 
             ro: base.nama_ro,
 
-            abt: getMetrics(
-              abtChild,
-            ),
+            abt: getMetrics(abtChild),
 
-            nonAbt: getMetrics(
-              nonAbtChild,
-            ),
+            nonAbt: getMetrics(nonAbtChild),
           });
         }
 
         sortRows(subRows);
 
-        const baseParent =
-          abtParent ||
-          nonAbtParent;
+        const baseParent = abtParent || nonAbtParent;
 
         if (!baseParent) {
           continue;
@@ -1676,19 +1434,13 @@ export async function getDashboardRekapan() {
         result.push({
           id: baseParent.id,
 
-          kode:
-            baseParent.kode ||
-            "-",
+          kode: baseParent.kode || "-",
 
           ro: baseParent.nama_ro,
 
-          abt: getMetrics(
-            abtParent,
-          ),
+          abt: getMetrics(abtParent),
 
-          nonAbt: getMetrics(
-            nonAbtParent,
-          ),
+          nonAbt: getMetrics(nonAbtParent),
 
           subRows,
         });
@@ -1697,917 +1449,327 @@ export async function getDashboardRekapan() {
       return sortRows(result);
     };
 
-    const rowsSertif =
-      buildStandardGroup([
-        "sertifikasi",
-        "sertifikasi-kompetensi",
-      ]);
+    const rowsSertif = buildStandardGroup(["sertifikasi", "sertifikasi-kompetensi"]);
 
+    const rowsProd = buildStandardGroup(["produktivitas"]);
 
+    const buildUptpMegaGroup = (): DashboardRow[] => {
+      const uptpAbt = abtData.filter((row) => normalizeModul(row.modul) === "uptp" && isValidRow(row));
 
-    const rowsProd =
-      buildStandardGroup([
-        "produktivitas",
-      ]);
+      const uptpNonAbt = nonAbtData.filter((row) => normalizeModul(row.modul) === "uptp" && isValidRow(row));
 
-    const buildUptpMegaGroup =
-      (): DashboardRow[] => {
- 
-        const uptpAbt =
-          abtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "uptp" &&
-              isValidRow(row),
-          );
+      const satpelAbt = abtData.filter((row) => normalizeModul(row.modul) === "satpel" && isValidRow(row));
 
-        const uptpNonAbt =
-          nonAbtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "uptp" &&
-              isValidRow(row),
-          );
+      const satpelNonAbt = nonAbtData.filter((row) => normalizeModul(row.modul) === "satpel" && isValidRow(row));
 
+      const integratedModules = ["tmt", "lpks", "blkk"];
 
-        const satpelAbt =
-          abtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "satpel" &&
-              isValidRow(row),
-          );
+      const integratedAbt = abtData.filter((row) => integratedModules.includes(normalizeModul(row.modul)) && row.parent_id === null);
 
-        const satpelNonAbt =
-          nonAbtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "satpel" &&
-              isValidRow(row),
-          );
+      const integratedNonAbt = nonAbtData.filter((row) => integratedModules.includes(normalizeModul(row.modul)) && row.parent_id === null);
 
-        const integratedModules = [
-          "tmt",
-          "lpks",
-          "blkk",
-        ];
+      const uptdAbt = abtData.filter((row) => normalizeModul(row.modul) === "uptd" && row.parent_id === null && isValidRow(row));
 
-        const integratedAbt =
-          abtData.filter(
-            (row) =>
-              integratedModules.includes(
-                normalizeModul(
-                  row.modul,
-                ),
-              ) &&
-              row.parent_id === null,
-          );
+      const uptdNonAbt = nonAbtData.filter((row) => normalizeModul(row.modul) === "uptd" && row.parent_id === null && isValidRow(row));
 
-        const integratedNonAbt =
-          nonAbtData.filter(
-            (row) =>
-              integratedModules.includes(
-                normalizeModul(
-                  row.modul,
-                ),
-              ) &&
-              row.parent_id === null,
-          );
+      const pflkAbt = abtData.filter((row) => normalizeModul(row.modul) === "pflk" && row.parent_id === null && isValidRow(row));
 
-        const uptdAbt =
-          abtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "uptd" &&
-              row.parent_id === null &&
-              isValidRow(row),
-          );
+      const pflkNonAbt = nonAbtData.filter((row) => normalizeModul(row.modul) === "pflk" && row.parent_id === null && isValidRow(row));
 
-        const uptdNonAbt =
-          nonAbtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "uptd" &&
-              row.parent_id === null &&
-              isValidRow(row),
-          );
+      const nonBatchAbt = abtData.filter((row) => normalizeModul(row.modul) === "non-batch" && row.parent_id === null && isValidNonBatchRow(row));
 
+      const nonBatchNonAbt = nonAbtData.filter((row) => normalizeModul(row.modul) === "non-batch" && row.parent_id === null && isValidNonBatchRow(row));
 
-        const pflkAbt =
-          abtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "pflk" &&
-              row.parent_id === null &&
-              isValidRow(row),
-          );
+      const uptpParentsAbt = uptpAbt.filter((row) => row.parent_id === null);
 
-        const pflkNonAbt =
-          nonAbtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "pflk" &&
-              row.parent_id === null &&
-              isValidRow(row),
-          );
+      const uptpParentsNonAbt = uptpNonAbt.filter((row) => row.parent_id === null);
 
-        const nonBatchAbt =
-          abtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "non-batch" &&
-              row.parent_id === null &&
-              isValidNonBatchRow(row),
-          );
+      const parentKeys = new Set<string>();
 
-        const nonBatchNonAbt =
-          nonAbtData.filter(
-            (row) =>
-              normalizeModul(
-                row.modul,
-              ) === "non-batch" &&
-              row.parent_id === null &&
-              isValidNonBatchRow(row),
-          );
+      uptpParentsAbt.forEach((row) => {
+        parentKeys.add(makeKey(row.kode, row.nama_ro));
+      });
 
+      uptpParentsNonAbt.forEach((row) => {
+        parentKeys.add(makeKey(row.kode, row.nama_ro));
+      });
 
-        const uptpParentsAbt =
-          uptpAbt.filter(
-            (row) =>
-              row.parent_id === null,
-          );
+      satpelAbt
+        .filter((row) => row.parent_id === null)
+        .forEach((row) => {
+          parentKeys.add(makeKey(row.kode, row.nama_ro));
+        });
 
-        const uptpParentsNonAbt =
-          uptpNonAbt.filter(
-            (row) =>
-              row.parent_id === null,
-          );
+      satpelNonAbt
+        .filter((row) => row.parent_id === null)
+        .forEach((row) => {
+          parentKeys.add(makeKey(row.kode, row.nama_ro));
+        });
 
-        const parentKeys =
-          new Set<string>();
+      const result: DashboardRow[] = [];
 
-        uptpParentsAbt.forEach(
-          (row) => {
-            parentKeys.add(
-              makeKey(
-                row.kode,
-                row.nama_ro,
-              ),
-            );
-          },
-        );
+      for (const key of parentKeys) {
+        const abtUptpParent = uptpParentsAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-        uptpParentsNonAbt.forEach(
-          (row) => {
-            parentKeys.add(
-              makeKey(
-                row.kode,
-                row.nama_ro,
-              ),
-            );
-          },
-        );
+        const nonAbtUptpParent = uptpParentsNonAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-        satpelAbt
-          .filter(
-            (row) =>
-              row.parent_id === null,
-          )
-          .forEach((row) => {
-            parentKeys.add(
-              makeKey(
-                row.kode,
-                row.nama_ro,
-              ),
-            );
-          });
+        const abtSatpelParent = satpelAbt.find((row) => row.parent_id === null && makeKey(row.kode, row.nama_ro) === key);
 
-        satpelNonAbt
-          .filter(
-            (row) =>
-              row.parent_id === null,
-          )
-          .forEach((row) => {
-            parentKeys.add(
-              makeKey(
-                row.kode,
-                row.nama_ro,
-              ),
-            );
-          });
+        const nonAbtSatpelParent = satpelNonAbt.find((row) => row.parent_id === null && makeKey(row.kode, row.nama_ro) === key);
 
-        const result: DashboardRow[] =
-          [];
+        const base = abtUptpParent || nonAbtUptpParent || abtSatpelParent || nonAbtSatpelParent;
 
+        if (!base) {
+          continue;
+        }
 
-        for (const key of parentKeys) {
-          const abtUptpParent =
-            uptpParentsAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+        const abtParentIds = uptpParentsAbt.filter((row) => makeKey(row.kode, row.nama_ro) === key).map((row) => row.id);
 
-          const nonAbtUptpParent =
-            uptpParentsNonAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+        const nonAbtParentIds = uptpParentsNonAbt.filter((row) => makeKey(row.kode, row.nama_ro) === key).map((row) => row.id);
 
-          const abtSatpelParent =
-            satpelAbt.find(
-              (row) =>
-                row.parent_id ===
-                  null &&
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+        const abtSatpelParentIds = satpelAbt.filter((row) => row.parent_id === null && makeKey(row.kode, row.nama_ro) === key).map((row) => row.id);
 
-          const nonAbtSatpelParent =
-            satpelNonAbt.find(
-              (row) =>
-                row.parent_id ===
-                  null &&
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+        const nonAbtSatpelParentIds = satpelNonAbt.filter((row) => row.parent_id === null && makeKey(row.kode, row.nama_ro) === key).map((row) => row.id);
 
-          const base =
-            abtUptpParent ||
-            nonAbtUptpParent ||
-            abtSatpelParent ||
-            nonAbtSatpelParent;
+        const uptpChildrenAbt = uptpAbt.filter((row) => row.parent_id !== null && abtParentIds.includes(row.parent_id));
 
-          if (!base) {
-            continue;
+        const uptpChildrenNonAbt = uptpNonAbt.filter((row) => row.parent_id !== null && nonAbtParentIds.includes(row.parent_id));
+
+        const satpelChildrenAbt = satpelAbt.filter((row) => row.parent_id !== null && abtSatpelParentIds.includes(row.parent_id));
+
+        const satpelChildrenNonAbt = satpelNonAbt.filter((row) => row.parent_id !== null && nonAbtSatpelParentIds.includes(row.parent_id));
+
+        const childKeys = new Set<string>();
+
+        [...uptpChildrenAbt, ...uptpChildrenNonAbt, ...satpelChildrenAbt, ...satpelChildrenNonAbt].forEach((row) => {
+          if (isValidRow(row)) {
+            childKeys.add(makeKey(row.kode, row.nama_ro));
           }
+        });
 
-          const abtParentIds =
-            uptpParentsAbt
-              .filter(
-                (row) =>
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === key,
-              )
-              .map(
-                (row) => row.id,
-              );
+        const subRows: DashboardSubRow[] = [];
 
-          const nonAbtParentIds =
-            uptpParentsNonAbt
-              .filter(
-                (row) =>
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === key,
-              )
-              .map(
-                (row) => row.id,
-              );
+        const isBidangIndustriJasa = key === makeKey("4057.SCO.003", "Bidang Industri dan Jasa");
 
-          const abtSatpelParentIds =
-            satpelAbt
-              .filter(
-                (row) =>
-                  row.parent_id ===
-                    null &&
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === key,
-              )
-              .map(
-                (row) => row.id,
-              );
+        if (isBidangIndustriJasa) {
+          for (const modul of integratedModules) {
+            const abtIntegrated = integratedAbt.find((row) => normalizeModul(row.modul) === modul);
 
-          const nonAbtSatpelParentIds =
-            satpelNonAbt
-              .filter(
-                (row) =>
-                  row.parent_id ===
-                    null &&
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === key,
-              )
-              .map(
-                (row) => row.id,
-              );
+            const nonAbtIntegrated = integratedNonAbt.find((row) => normalizeModul(row.modul) === modul);
 
-          const uptpChildrenAbt =
-            uptpAbt.filter(
-              (row) =>
-                row.parent_id !==
-                  null &&
-                abtParentIds.includes(
-                  row.parent_id,
-                ),
-            );
+            const baseIntegrated = abtIntegrated || nonAbtIntegrated;
 
-          const uptpChildrenNonAbt =
-            uptpNonAbt.filter(
-              (row) =>
-                row.parent_id !==
-                  null &&
-                nonAbtParentIds.includes(
-                  row.parent_id,
-                ),
-            );
-
-          const satpelChildrenAbt =
-            satpelAbt.filter(
-              (row) =>
-                row.parent_id !==
-                  null &&
-                abtSatpelParentIds.includes(
-                  row.parent_id,
-                ),
-            );
-
-          const satpelChildrenNonAbt =
-            satpelNonAbt.filter(
-              (row) =>
-                row.parent_id !==
-                  null &&
-                nonAbtSatpelParentIds.includes(
-                  row.parent_id,
-                ),
-            );
-
-          const childKeys =
-            new Set<string>();
-
-          [
-            ...uptpChildrenAbt,
-            ...uptpChildrenNonAbt,
-            ...satpelChildrenAbt,
-            ...satpelChildrenNonAbt,
-          ].forEach((row) => {
-            if (isValidRow(row)) {
-              childKeys.add(
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ),
-              );
-            }
-          });
-
-          const subRows: DashboardSubRow[] =
-            [];
-
-          const isBidangIndustriJasa =
-            key ===
-            makeKey(
-              "4057.SCO.003",
-              "Bidang Industri dan Jasa",
-            );
-
-          if (
-            isBidangIndustriJasa
-          ) {
-            for (const modul of integratedModules) {
-              const abtIntegrated =
-                integratedAbt.find(
-                  (row) =>
-                    normalizeModul(
-                      row.modul,
-                    ) === modul,
-                );
-
-              const nonAbtIntegrated =
-                integratedNonAbt.find(
-                  (row) =>
-                    normalizeModul(
-                      row.modul,
-                    ) === modul,
-                );
-
-              const baseIntegrated =
-                abtIntegrated ||
-                nonAbtIntegrated;
-
-              if (
-                !baseIntegrated
-              ) {
-                continue;
-              }
-
-              subRows.push({
-                id:
-                  baseIntegrated.id,
-
-                kode:
-                  baseIntegrated.kode ||
-                  "-",
-
-                ro:
-                  baseIntegrated.nama_ro?.trim() ||
-                  modul.toUpperCase(),
-
-                abt:
-                  getMetrics(
-                    abtIntegrated,
-                  ),
-
-                nonAbt:
-                  getMetrics(
-                    nonAbtIntegrated,
-                  ),
-              });
-            }
-          }
-
-
-          for (const childKey of childKeys) {
-            const abtUptpChild =
-              uptpChildrenAbt.find(
-                (row) =>
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === childKey,
-              );
-
-            const nonAbtUptpChild =
-              uptpChildrenNonAbt.find(
-                (row) =>
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === childKey,
-              );
-
-            const abtSatpelChild =
-              satpelChildrenAbt.find(
-                (row) =>
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === childKey,
-              );
-
-            const nonAbtSatpelChild =
-              satpelChildrenNonAbt.find(
-                (row) =>
-                  makeKey(
-                    row.kode,
-                    row.nama_ro,
-                  ) === childKey,
-              );
-
-            const abtMetrics =
-              addMetrics(
-                getMetrics(
-                  abtUptpChild,
-                ),
-                getMetrics(
-                  abtSatpelChild,
-                ),
-              );
-
-            const nonAbtMetrics =
-              addMetrics(
-                getMetrics(
-                  nonAbtUptpChild,
-                ),
-                getMetrics(
-                  nonAbtSatpelChild,
-                ),
-              );
-
-            const baseChild =
-              abtUptpChild ||
-              nonAbtUptpChild ||
-              abtSatpelChild ||
-              nonAbtSatpelChild;
-
-            if (!baseChild) {
+            if (!baseIntegrated) {
               continue;
             }
 
             subRows.push({
-              id: baseChild.id,
+              id: baseIntegrated.id,
 
-              kode:
-                baseChild.kode ||
-                "-",
+              kode: baseIntegrated.kode || "-",
 
-              ro:
-                baseChild.nama_ro,
+              ro: baseIntegrated.nama_ro?.trim() || modul.toUpperCase(),
 
-              abt: abtMetrics,
+              abt: getMetrics(abtIntegrated),
 
-              nonAbt:
-                nonAbtMetrics,
+              nonAbt: getMetrics(nonAbtIntegrated),
             });
           }
-
-          sortRows(subRows);
-
-          const abtParentMetrics =
-            addMetrics(
-              getMetrics(
-                abtUptpParent,
-              ),
-              getMetrics(
-                abtSatpelParent,
-              ),
-            );
-
-          const nonAbtParentMetrics =
-            addMetrics(
-              getMetrics(
-                nonAbtUptpParent,
-              ),
-              getMetrics(
-                nonAbtSatpelParent,
-              ),
-            );
-
-          result.push({
-            id: base.id,
-
-            kode:
-              base.kode || "-",
-
-            ro:
-              base.nama_ro,
-
-            abt:
-              abtParentMetrics,
-
-            nonAbt:
-              nonAbtParentMetrics,
-
-            subRows,
-          });
         }
 
+        for (const childKey of childKeys) {
+          const abtUptpChild = uptpChildrenAbt.find((row) => makeKey(row.kode, row.nama_ro) === childKey);
 
-        const uptdKeys =
-          new Set<string>();
+          const nonAbtUptpChild = uptpChildrenNonAbt.find((row) => makeKey(row.kode, row.nama_ro) === childKey);
 
-        uptdAbt.forEach((row) => {
-          uptdKeys.add(
-            makeKey(
-              row.kode,
-              row.nama_ro,
-            ),
-          );
-        });
+          const abtSatpelChild = satpelChildrenAbt.find((row) => makeKey(row.kode, row.nama_ro) === childKey);
 
-        uptdNonAbt.forEach((row) => {
-          uptdKeys.add(
-            makeKey(
-              row.kode,
-              row.nama_ro,
-            ),
-          );
-        });
+          const nonAbtSatpelChild = satpelChildrenNonAbt.find((row) => makeKey(row.kode, row.nama_ro) === childKey);
 
-        for (const key of uptdKeys) {
-          const abtRow =
-            uptdAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+          const abtMetrics = addMetrics(getMetrics(abtUptpChild), getMetrics(abtSatpelChild));
 
-          const nonAbtRow =
-            uptdNonAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+          const nonAbtMetrics = addMetrics(getMetrics(nonAbtUptpChild), getMetrics(nonAbtSatpelChild));
 
-          const base =
-            abtRow || nonAbtRow;
+          const baseChild = abtUptpChild || nonAbtUptpChild || abtSatpelChild || nonAbtSatpelChild;
 
-          if (!base) {
+          if (!baseChild) {
             continue;
           }
 
-          result.push({
-            id: base.id,
+          subRows.push({
+            id: baseChild.id,
 
-            kode:
-              base.kode || "-",
+            kode: baseChild.kode || "-",
 
-            ro:
-              base.nama_ro,
+            ro: baseChild.nama_ro,
 
-            abt:
-              getMetrics(
-                abtRow,
-              ),
+            abt: abtMetrics,
 
-            nonAbt:
-              getMetrics(
-                nonAbtRow,
-              ),
-
-            subRows: [],
+            nonAbt: nonAbtMetrics,
           });
         }
 
+        sortRows(subRows);
 
-        const pflkKeys =
-          new Set<string>();
+        const abtParentMetrics = addMetrics(getMetrics(abtUptpParent), getMetrics(abtSatpelParent));
 
-        pflkAbt.forEach((row) => {
-          pflkKeys.add(
-            makeKey(
-              row.kode,
-              row.nama_ro,
-            ),
-          );
+        const nonAbtParentMetrics = addMetrics(getMetrics(nonAbtUptpParent), getMetrics(nonAbtSatpelParent));
+
+        result.push({
+          id: base.id,
+
+          kode: base.kode || "-",
+
+          ro: base.nama_ro,
+
+          abt: abtParentMetrics,
+
+          nonAbt: nonAbtParentMetrics,
+
+          subRows,
         });
+      }
 
-        pflkNonAbt.forEach((row) => {
-          pflkKeys.add(
-            makeKey(
-              row.kode,
-              row.nama_ro,
-            ),
-          );
-        });
+      const uptdKeys = new Set<string>();
 
-        for (const key of pflkKeys) {
-          const abtRow =
-            pflkAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+      uptdAbt.forEach((row) => {
+        uptdKeys.add(makeKey(row.kode, row.nama_ro));
+      });
 
-          const nonAbtRow =
-            pflkNonAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+      uptdNonAbt.forEach((row) => {
+        uptdKeys.add(makeKey(row.kode, row.nama_ro));
+      });
 
-          const base =
-            abtRow || nonAbtRow;
+      for (const key of uptdKeys) {
+        const abtRow = uptdAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-          if (!base) {
-            continue;
-          }
+        const nonAbtRow = uptdNonAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-          result.push({
-            id: base.id,
+        const base = abtRow || nonAbtRow;
 
-            kode:
-              base.kode || "-",
-
-            ro:
-              base.nama_ro,
-
-            abt:
-              getMetrics(
-                abtRow,
-              ),
-
-            nonAbt:
-              getMetrics(
-                nonAbtRow,
-              ),
-
-            subRows: [],
-          });
+        if (!base) {
+          continue;
         }
 
+        result.push({
+          id: base.id,
 
-        const nonBatchKeys =
-          new Set<string>();
+          kode: base.kode || "-",
 
-        nonBatchAbt.forEach((row) => {
-          nonBatchKeys.add(
-            makeKey(
-              row.kode,
-              row.nama_ro,
-            ),
-          );
+          ro: base.nama_ro,
+
+          abt: getMetrics(abtRow),
+
+          nonAbt: getMetrics(nonAbtRow),
+
+          subRows: [],
         });
+      }
 
-        nonBatchNonAbt.forEach((row) => {
-          nonBatchKeys.add(
-            makeKey(
-              row.kode,
-              row.nama_ro,
-            ),
-          );
-        });
+      const pflkKeys = new Set<string>();
 
-        for (const key of nonBatchKeys) {
-          const abtRow =
-            nonBatchAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+      pflkAbt.forEach((row) => {
+        pflkKeys.add(makeKey(row.kode, row.nama_ro));
+      });
 
-          const nonAbtRow =
-            nonBatchNonAbt.find(
-              (row) =>
-                makeKey(
-                  row.kode,
-                  row.nama_ro,
-                ) === key,
-            );
+      pflkNonAbt.forEach((row) => {
+        pflkKeys.add(makeKey(row.kode, row.nama_ro));
+      });
 
-          const base =
-            abtRow || nonAbtRow;
+      for (const key of pflkKeys) {
+        const abtRow = pflkAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-          if (!base) {
-            continue;
-          }
+        const nonAbtRow = pflkNonAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
 
-          result.push({
-            id: base.id,
+        const base = abtRow || nonAbtRow;
 
-            kode:
-              base.kode || "-",
-
-            ro:
-              base.nama_ro,
-
-            abt:
-              getMetrics(
-                abtRow,
-              ),
-
-            nonAbt:
-              getMetrics(
-                nonAbtRow,
-              ),
-
-            // PERSIS SEPERTI PFLK
-            subRows: [],
-          });
+        if (!base) {
+          continue;
         }
 
-        const isUptd = (
-          row: DashboardRow,
-        ) =>
-          uptdAbt.some(
-            (source) =>
-              makeKey(
-                source.kode,
-                source.nama_ro,
-              ) ===
-              makeKey(
-                row.kode,
-                row.ro,
-              ),
-          ) ||
-          uptdNonAbt.some(
-            (source) =>
-              makeKey(
-                source.kode,
-                source.nama_ro,
-              ) ===
-              makeKey(
-                row.kode,
-                row.ro,
-              ),
-          );
+        result.push({
+          id: base.id,
 
-        const isPflk = (
-          row: DashboardRow,
-        ) =>
-          pflkAbt.some(
-            (source) =>
-              makeKey(
-                source.kode,
-                source.nama_ro,
-              ) ===
-              makeKey(
-                row.kode,
-                row.ro,
-              ),
-          ) ||
-          pflkNonAbt.some(
-            (source) =>
-              makeKey(
-                source.kode,
-                source.nama_ro,
-              ) ===
-              makeKey(
-                row.kode,
-                row.ro,
-              ),
-          );
+          kode: base.kode || "-",
 
-        const isNonBatch = (
-          row: DashboardRow,
-        ) =>
-          nonBatchAbt.some(
-            (source) =>
-              makeKey(
-                source.kode,
-                source.nama_ro,
-              ) ===
-              makeKey(
-                row.kode,
-                row.ro,
-              ),
-          ) ||
-          nonBatchNonAbt.some(
-            (source) =>
-              makeKey(
-                source.kode,
-                source.nama_ro,
-              ) ===
-              makeKey(
-                row.kode,
-                row.ro,
-              ),
-          );
+          ro: base.nama_ro,
 
-        result.sort((a, b) => {
-          const priorityA =
-            isUptd(a)
-              ? 2
-              : isPflk(a)
-                ? 3
-                : isNonBatch(a)
-                  ? 4
-                  : 1;
+          abt: getMetrics(abtRow),
 
-          const priorityB =
-            isUptd(b)
-              ? 2
-              : isPflk(b)
-                ? 3
-                : isNonBatch(b)
-                  ? 4
-                  : 1;
+          nonAbt: getMetrics(nonAbtRow),
 
-          if (
-            priorityA !==
-            priorityB
-          ) {
-            return (
-              priorityA -
-              priorityB
-            );
-          }
-
-          return a.kode.localeCompare(
-            b.kode,
-            undefined,
-            {
-              numeric: true,
-              sensitivity: "base",
-            },
-          );
+          subRows: [],
         });
+      }
 
-        return result;
-      };
+      const nonBatchKeys = new Set<string>();
 
+      nonBatchAbt.forEach((row) => {
+        nonBatchKeys.add(makeKey(row.kode, row.nama_ro));
+      });
+
+      nonBatchNonAbt.forEach((row) => {
+        nonBatchKeys.add(makeKey(row.kode, row.nama_ro));
+      });
+
+      for (const key of nonBatchKeys) {
+        const abtRow = nonBatchAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
+
+        const nonAbtRow = nonBatchNonAbt.find((row) => makeKey(row.kode, row.nama_ro) === key);
+
+        const base = abtRow || nonAbtRow;
+
+        if (!base) {
+          continue;
+        }
+
+        result.push({
+          id: base.id,
+
+          kode: base.kode || "-",
+
+          ro: base.nama_ro,
+
+          abt: getMetrics(abtRow),
+
+          nonAbt: getMetrics(nonAbtRow),
+
+          // PERSIS SEPERTI PFLK
+          subRows: [],
+        });
+      }
+
+      const isUptd = (row: DashboardRow) => uptdAbt.some((source) => makeKey(source.kode, source.nama_ro) === makeKey(row.kode, row.ro)) || uptdNonAbt.some((source) => makeKey(source.kode, source.nama_ro) === makeKey(row.kode, row.ro));
+
+      const isPflk = (row: DashboardRow) => pflkAbt.some((source) => makeKey(source.kode, source.nama_ro) === makeKey(row.kode, row.ro)) || pflkNonAbt.some((source) => makeKey(source.kode, source.nama_ro) === makeKey(row.kode, row.ro));
+
+      const isNonBatch = (row: DashboardRow) =>
+        nonBatchAbt.some((source) => makeKey(source.kode, source.nama_ro) === makeKey(row.kode, row.ro)) || nonBatchNonAbt.some((source) => makeKey(source.kode, source.nama_ro) === makeKey(row.kode, row.ro));
+
+      result.sort((a, b) => {
+        const priorityA = isUptd(a) ? 2 : isPflk(a) ? 3 : isNonBatch(a) ? 4 : 1;
+
+        const priorityB = isUptd(b) ? 2 : isPflk(b) ? 3 : isNonBatch(b) ? 4 : 1;
+
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+
+        return a.kode.localeCompare(b.kode, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+      });
+
+      return result;
+    };
 
     return {
       success: true,
 
       data: [
         {
-          groupName:
-            "Sertifikasi Kompetensi",
+          groupName: "Sertifikasi Kompetensi",
 
           rows: rowsSertif,
         },
@@ -2615,27 +1777,20 @@ export async function getDashboardRekapan() {
         {
           groupName: "UPTP",
 
-          rows:
-            buildUptpMegaGroup(),
+          rows: buildUptpMegaGroup(),
         },
 
         {
-          groupName:
-            "Produktivitas",
+          groupName: "Produktivitas",
 
           rows: rowsProd,
         },
       ],
     };
   } catch (error: unknown) {
-    console.error(
-      "Gagal memuat data Dashboard:",
-      error,
-    );
+    console.error("Gagal memuat data Dashboard:", error);
 
-    if (
-      error instanceof Error
-    ) {
+    if (error instanceof Error) {
       return {
         success: false,
         error: error.message,
@@ -2644,8 +1799,7 @@ export async function getDashboardRekapan() {
 
     return {
       success: false,
-      error:
-        "Gagal memuat data Dashboard.",
+      error: "Gagal memuat data Dashboard.",
     };
   }
 }
@@ -2689,39 +1843,43 @@ export async function getMenuNonAPBN() {
 
 export async function simpanBulkMenuNonAPBN(payload: MenuNonAPBNRowData[]) {
   try {
-    await sql`
-      DELETE FROM non_apbn
-    `;
+    const oldRows = await sql`SELECT id FROM non_apbn`;
+    const keepIds = new Set<string>();
 
     for (const item of payload) {
-      await sql`
-        INSERT INTO non_apbn (
-          id,
-          realisasi_paket,
-          realisasi_orang
-        )
-        VALUES (
-          ${item.id},
-          ${item.realisasi_paket},
-          ${item.realisasi_orang}
-        )
+      keepIds.add(String(item.id));
+      const updated = await sql`
+        UPDATE non_apbn
+        SET realisasi_paket = ${toDsa(item.realisasi_paket)},
+            realisasi_orang = ${toDsa(item.realisasi_orang)}
+        WHERE id = ${item.id}
+        RETURNING id
       `;
+
+      if (updated.length === 0) {
+        await sql`
+          INSERT INTO non_apbn (id, realisasi_paket, realisasi_orang)
+          VALUES (
+            ${item.id},
+            ${toDsa(item.realisasi_paket)},
+            ${toDsa(item.realisasi_orang)}
+          )
+        `;
+      }
     }
 
-    return {
-      success: true,
-    };
+    for (const oldRow of oldRows) {
+      if (!keepIds.has(String(oldRow.id))) {
+        await sql`DELETE FROM non_apbn WHERE id = ${oldRow.id}`;
+      }
+    }
+
+    return { success: true };
   } catch (error: unknown) {
-    if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-
+    console.error("Gagal menyimpan data NON APBN:", error);
     return {
       success: false,
-      error: "Terjadi kesalahan saat menyimpan data NON APBN.",
+      error: error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan data NON APBN.",
     };
   }
 }
